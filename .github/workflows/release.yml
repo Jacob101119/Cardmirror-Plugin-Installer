@@ -1,0 +1,122 @@
+
+name: Create Plugin Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Optional version override (example: 1.0.1). Leave blank to increment automatically."
+        required: false
+        type: string
+        default: ""
+      release_notes:
+        description: "Optional release notes. Leave blank to generate automatically."
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine version
+        id: version
+        env:
+          OVERRIDE: ${{ inputs.version }}
+        run: |
+          git fetch --tags --force
+
+          if [ -n "$OVERRIDE" ]; then
+            VERSION="${OVERRIDE#v}"
+          else
+            LATEST_TAG=$(git tag --list 'v[0-9]*' --sort=-version:refname | head -n 1)
+
+            if [ -z "$LATEST_TAG" ]; then
+              VERSION="0.1.1"
+            else
+              CURRENT="${LATEST_TAG#v}"
+
+              if [[ ! "$CURRENT" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+                echo "Invalid latest tag: $LATEST_TAG"
+                exit 1
+              fi
+
+              MAJOR="${BASH_REMATCH[1]}"
+              MINOR="${BASH_REMATCH[2]}"
+              PATCH="${BASH_REMATCH[3]}"
+
+              VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
+            fi
+          fi
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version: $VERSION"
+            exit 1
+          fi
+
+          TAG="v$VERSION"
+
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists."
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Verify plugin files
+        run: |
+          test -f cardmirror-plugin.json
+          test -f plugin.js
+
+      - name: Update manifest version
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          jq --arg version "$VERSION" \
+            '.version = $version' \
+            cardmirror-plugin.json > manifest.tmp
+
+          mv manifest.tmp cardmirror-plugin.json
+
+      - name: Commit updated manifest
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add cardmirror-plugin.json
+          git commit -m "chore: release v$VERSION" || echo "No manifest changes"
+          git push
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+        run: |
+          if [ -n "$RELEASE_NOTES" ]; then
+            gh release create "$TAG" \
+              cardmirror-plugin.json \
+              plugin.js \
+              --title "$TAG" \
+              --notes "$RELEASE_NOTES" \
+              --repo "${{ github.repository }}"
+          else
+            gh release create "$TAG" \
+              cardmirror-plugin.json \
+              plugin.js \
+              --title "$TAG" \
+              --generate-notes \
+              --repo "${{ github.repository }}"
+          fi

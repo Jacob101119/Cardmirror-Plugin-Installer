@@ -1,0 +1,9 @@
+{
+  "id": "cardmirror-speechdrop",
+  "name": "SpeechDrop",
+  "version": "0.1.19",
+  "description": "Send CardMirror documents directly to SpeechDrop.",
+  "author": "Jacob Scherrer",
+  "apiVersion": 1,
+  "minAppVersion": "0.1.0-beta.22"
+}

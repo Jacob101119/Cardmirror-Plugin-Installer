@@ -335,7 +335,14 @@
     '.hint{font-size:11.5px;color:var(--muted);margin-top:8px}',
     '.hint a,footer a{color:inherit;text-decoration:underline}',
     '.hint a:hover,footer a:hover{color:var(--fg)}',
-    'footer{flex:none;padding:10px 20px;border-top:1px solid var(--line);font-size:11px;color:var(--muted);text-align:center}',
+    'footer{flex:none;padding:10px 20px;border-top:1px solid var(--line);font-size:11px;color:var(--muted);display:grid;grid-template-columns:1fr auto 1fr;align-items:center}',
+    'footer .mid{text-align:center}',
+    '.tog{justify-self:end;display:inline-flex;align-items:center;gap:8px;color:var(--muted);font-size:11px}',
+    '.tog:hover{color:var(--fg)}',
+    '.sw{width:28px;height:16px;border-radius:99px;background:var(--bg3);border:1px solid var(--line);position:relative;transition:background .15s}',
+    '.sw::after{content:"";position:absolute;top:1px;left:1px;width:12px;height:12px;border-radius:50%;background:var(--muted);transition:transform .15s,background .15s}',
+    '.tog.on .sw{background:var(--fg)}',
+    '.tog.on .sw::after{transform:translateX(12px);background:var(--bg)}',
     '.toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:9px 16px;border-radius:10px;font-size:13px;box-shadow:var(--shadow);z-index:9;display:flex;gap:8px;align-items:center}',
   ].join('\n');
 
@@ -361,7 +368,36 @@
     return 0;
   }
 
+  // ---------------------------------------------------------------------------
+  // Floating button (bottom-left). Can be turned off from the panel footer.
+  // ---------------------------------------------------------------------------
+  var fabHost = null, lastApi = null;
+  function fabEnabled() { return lsGet('fab', true) !== false; }
+  function stubApi() { return { storage: { get: function () {}, set: function () {} } }; }
+
+  function removeFab() { if (fabHost) { fabHost.remove(); fabHost = null; } }
+  function refreshFab() {
+    // shown only when enabled and the panel is closed
+    if (!fabEnabled() || host) { removeFab(); return; }
+    if (fabHost || !document.body) return;
+    fabHost = document.createElement('div');
+    var r = fabHost.attachShadow({ mode: 'open' });
+    r.innerHTML = '<style>' +
+      ':host{all:initial}' +
+      '.fab{position:fixed;left:16px;bottom:16px;z-index:2147482000;display:flex;align-items:center;gap:8px;height:40px;padding:0 15px 0 12px;' +
+      'border-radius:99px;border:1px solid #d4d4d8;background:#ffffff;color:#18181b;font:600 13px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;' +
+      'cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.2);transition:transform .12s,box-shadow .12s}' +
+      '.fab:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(0,0,0,.26)}' +
+      '@media (prefers-color-scheme:dark){.fab{background:#1e222b;color:#eceef3;border-color:#2c313d}}' +
+      '</style><button class="fab" aria-label="Open Plugin Manager" title="Open Plugin Manager">' + icon('store', 16) + 'Plugins</button>';
+    r.querySelector('.fab').addEventListener('click', function () { openManager(lastApi || stubApi()); });
+    document.body.appendChild(fabHost);
+  }
+
   function openManager(api) {
+    api = api || lastApi || stubApi();
+    lastApi = api;
+    removeFab(); // hidden while the panel is open
     if (host) { host.remove(); host = null; }
 
     var state = {
@@ -412,6 +448,7 @@
       document.removeEventListener('keydown', onKey, true);
       if (host) host.remove();
       host = null;
+      refreshFab();
     }
     function onKey(e) {
       if (e.key === 'Escape') {
@@ -548,7 +585,7 @@
       var a = p.accent || ['#52525b', '#a1a1aa'];
       return '<div class="tile" style="background:linear-gradient(135deg,' + esc(a[0]) + ',' + esc(a[1]) + ')' + (p.iconColor ? ';color:' + esc(p.iconColor) : '') + '">' + icon(p.icon || 'puzzle', size || 24) + '</div>';
     }
-    function tierTag(p) { return '<span class="tag ' + esc(p.tier) + '">' + (p.tier === 'premium' ? 'Premium' : 'Free') + '</span>'; }
+    function tierTag(p) { return '<span class="tag ' + esc(p.tier) + '">' + (p.tier === 'premium' ? 'PAID' : 'Free') + '</span>'; }
     function spinner() { return '<span class="spin" style="display:inline-flex">' + icon('refresh', 14) + '</span>'; }
 
     function card(p) {
@@ -614,7 +651,7 @@
       var p = mo.plugin;
       return '<div class="modalscrim" data-act="modal-bg"><div class="modal' + (mo.fresh ? ' enter' : '') + '">' +
         '<div class="row" style="align-items:center;margin-bottom:14px">' + tile(p, 22).replace('width:48px', '') + '<div><h2>Activate ' + esc(p.name) + '</h2></div></div>' +
-        '<p>Enter your license key to unlock this premium plugin. Your license is saved on this device so you won\u2019t need to enter it again.</p>' +
+        '<p>Enter your license key to unlock this paid plugin. Your license is saved on this device so you won\u2019t need to enter it again.</p>' +
         '<label class="field" for="lic">License key</label>' +
         '<input id="lic" class="input" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false" value="' + esc(mo.key) + '"' + (mo.loading ? ' disabled' : '') + '>' +
         (mo.error ? '<div class="err">' + icon('alert', 15) + esc(mo.error) + '</div>' : '') +
@@ -649,7 +686,8 @@
         '</div><div class="body">' +
         (state.offline ? '<div class="banner">' + icon('alert', 15) + 'Couldn\u2019t reach the plugin server \u2014 showing the last saved catalog. Installing needs a connection.</div>' : '') +
         body + '</div>' +
-        '<footer>Contact developer \u2013 <a href="mailto:jacob.w.scherrer@gmail.com">jacob.w.scherrer@gmail.com</a></footer>' +
+        '<footer><span></span><span class="mid">Contact developer \u2013 <a href="mailto:jacob.w.scherrer@gmail.com">jacob.w.scherrer@gmail.com</a></span>' +
+        '<button class="tog ' + (fabEnabled() ? 'on' : '') + '" data-act="fab-toggle" role="switch" aria-checked="' + fabEnabled() + '">Floating button<span class="sw"></span></button></footer>' +
         modalView() +
         (state.toast ? '<div class="toast">' + icon('check', 15) + esc(state.toast) + '</div>' : '') +
         '</div></div>';
@@ -668,6 +706,10 @@
       if (act === 'close') close();
       else if (act === 'tab') { state.view = t.getAttribute('data-v'); render(); }
       else if (act === 'install') startInstall(byId(id));
+      else if (act === 'fab-toggle') {
+        var on = !fabEnabled(); sset('fab', on); render();
+        toast(on ? 'Floating button on' : 'Floating button off \u2014 open from the command palette');
+      }
       else if (act === 'check') checkUpdatesFor(id);
       else if (act === 'check-all') checkAll();
       else if (act === 'update') startUpdate(byId(id) || { id: id });
@@ -704,7 +746,7 @@
         label: 'Open Plugin Manager',
         keywords: ['plugins', 'marketplace', 'install', 'store', 'extensions'],
         defaultKey: null,
-        run: function (api) { openManager(api); },
+        run: function (api) { lastApi = api; openManager(api); },
       },
     ],
   });
@@ -712,4 +754,8 @@
   // Re-run every plugin installed through the manager (after our own
   // registration, so the manager always loads first).
   bootInstalledBundles();
+
+  // Floating button once the page is ready
+  if (document.body) refreshFab();
+  else document.addEventListener('DOMContentLoaded', refreshFab);
 })();

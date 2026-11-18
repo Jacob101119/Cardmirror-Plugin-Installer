@@ -42,7 +42,8 @@
       tier: 'free',
       version: '1.0.0',
       author: 'Jacob Scherrer',
-      accent: ['#0891b2', '#2563eb'],
+      accent: ['#e4e4e7', '#d4d4d8'],
+      iconColor: '#111111',
       icon: 'search',
     },
   ];
@@ -153,7 +154,7 @@
         id: r.id, name: String(r.name), description: String(r.description || local.description || ''),
         tier: r.tier, version: String(r.version), author: String(r.author || local.author || ''),
         // visuals stay local: remote image URLs aren't trusted or guaranteed to load
-        accent: local.accent, icon: local.icon, image: local.image,
+        accent: local.accent, iconColor: local.iconColor, icon: local.icon, image: local.image,
       };
     });
   }
@@ -272,8 +273,8 @@
     '@keyframes pop{from{transform:scale(.97);opacity:0}to{transform:none;opacity:1}}',
     'header{display:flex;align-items:center;gap:12px;padding:16px 20px 0}',
     '.logo{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,#3f3f46,#71717a)}',
-    'h1{font-size:17px;margin:0;font-weight:650;letter-spacing:-.01em}',
-    '.sub{font-size:12px;color:var(--muted);margin-top:1px}',
+    'h1{font-size:24px;margin:0;font-weight:700;letter-spacing:-.02em}',
+    '.sub{font-size:12.5px;color:var(--muted);margin-top:2px}',
     '.grow{flex:1}',
     'button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}',
     '.iconbtn{width:32px;height:32px;border-radius:8px;display:grid;place-items:center;color:var(--muted)}',
@@ -332,6 +333,9 @@
     '.err{margin-top:10px;padding:9px 12px;border-radius:9px;background:var(--badbg);color:var(--bad);font-size:12.5px;display:flex;gap:7px;align-items:center}',
     '.mfoot{display:flex;justify-content:flex-end;gap:8px;margin-top:18px}',
     '.hint{font-size:11.5px;color:var(--muted);margin-top:8px}',
+    '.hint a,footer a{color:inherit;text-decoration:underline}',
+    '.hint a:hover,footer a:hover{color:var(--fg)}',
+    'footer{flex:none;padding:10px 20px;border-top:1px solid var(--line);font-size:11px;color:var(--muted);text-align:center}',
     '.toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:9px 16px;border-radius:10px;font-size:13px;box-shadow:var(--shadow);z-index:9;display:flex;gap:8px;align-items:center}',
   ].join('\n');
 
@@ -542,7 +546,7 @@
         return '<div class="tile" style="background:none"><img src="' + p.image + '" alt="" style="width:100%;height:100%;border-radius:inherit;display:block"></div>';
       }
       var a = p.accent || ['#52525b', '#a1a1aa'];
-      return '<div class="tile" style="background:linear-gradient(135deg,' + esc(a[0]) + ',' + esc(a[1]) + ')">' + icon(p.icon || 'puzzle', size || 24) + '</div>';
+      return '<div class="tile" style="background:linear-gradient(135deg,' + esc(a[0]) + ',' + esc(a[1]) + ')' + (p.iconColor ? ';color:' + esc(p.iconColor) : '') + '">' + icon(p.icon || 'puzzle', size || 24) + '</div>';
     }
     function tierTag(p) { return '<span class="tag ' + esc(p.tier) + '">' + (p.tier === 'premium' ? 'Premium' : 'Free') + '</span>'; }
     function spinner() { return '<span class="spin" style="display:inline-flex">' + icon('refresh', 14) + '</span>'; }
@@ -614,7 +618,8 @@
         '<label class="field" for="lic">License key</label>' +
         '<input id="lic" class="input" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false" value="' + esc(mo.key) + '"' + (mo.loading ? ' disabled' : '') + '>' +
         (mo.error ? '<div class="err">' + icon('alert', 15) + esc(mo.error) + '</div>' : '') +
-        '<div class="hint">Licenses are bound to one device. Need to move it? Contact the plugin author for a reset.</div>' +
+        '<div class="hint">Don\u2019t have a key? <a href="https://www.google.com" target="_blank" rel="noopener noreferrer">Get one</a>.</div>' +
+        '<div class="hint">Licenses are bound to one device. Need to move it? <a href="mailto:jacob.w.scherrer@gmail.com">Contact</a> the developer for a reset.</div>' +
         '<div class="mfoot"><button class="btn" data-act="modal-cancel"' + (mo.loading ? ' disabled' : '') + '>Cancel</button>' +
         '<button class="btn primary" data-act="modal-submit"' + (mo.loading ? ' disabled' : '') + '>' + (mo.loading ? spinner() + 'Activating\u2026' : 'Activate &amp; install') + '</button></div>' +
         '</div></div>';
@@ -630,7 +635,7 @@
 
       root.innerHTML = '<style>' + CSS + '</style>' +
         '<div class="scrim" data-act="bg"><div class="win' + (firstRender ? ' enter' : '') + '" role="dialog" aria-label="Plugin Manager">' +
-        '<header><div class="logo">' + icon('store', 18) + '</div>' +
+        '<header>' +
         '<div><h1>Plugin Manager</h1><div class="sub">Browse, install and manage CardMirror plugins</div></div>' +
         '<span class="grow"></span><button class="iconbtn" data-act="close" aria-label="Close">' + icon('x', 18) + '</button></header>' +
         '<div class="bar"><div class="tabs">' +
@@ -643,7 +648,9 @@
             (Object.keys(state.checking).length ? spinner() : icon('refresh', 14)) + 'Check all for updates</button>') +
         '</div><div class="body">' +
         (state.offline ? '<div class="banner">' + icon('alert', 15) + 'Couldn\u2019t reach the plugin server \u2014 showing the last saved catalog. Installing needs a connection.</div>' : '') +
-        body + '</div>' + modalView() +
+        body + '</div>' +
+        '<footer>Contact developer \u2013 <a href="mailto:jacob.w.scherrer@gmail.com">jacob.w.scherrer@gmail.com</a></footer>' +
+        modalView() +
         (state.toast ? '<div class="toast">' + icon('check', 15) + esc(state.toast) + '</div>' : '') +
         '</div></div>';
 

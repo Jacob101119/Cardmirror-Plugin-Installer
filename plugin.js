@@ -125,7 +125,7 @@
     opts = opts || {};
     var ctl = new AbortController();
     var timer = setTimeout(function () { ctl.abort(); }, CONFIG.TIMEOUT_MS);
-    return fetch(BASE + path, Object.assign({ signal: ctl.signal }, opts)).then(function (res) {
+    return fetch(BASE + path, Object.assign({ signal: ctl.signal, cache: 'no-store' }, opts)).then(function (res) {
       clearTimeout(timer);
       return res.text().then(function (text) {
         if (!res.ok) throw httpError(res.status, text);
@@ -160,8 +160,8 @@
 
   var backend = {
     // -> { list, offline }
-    getCatalog: function () {
-      return request('/catalog').then(function (r) {
+    getCatalog: function (fresh) {
+      return request(fresh ? '/catalog?fresh=1&t=' + Date.now() : '/catalog').then(function (r) {
         var list = cleanCatalog((JSON.parse(r.text) || {}).plugins);
         if (!list.length) throw new Error('empty catalog');
         lsSet('catalog', list);
@@ -213,7 +213,7 @@
     },
 
     checkUpdate: function (plugin) {
-      return backend.getCatalog().then(function (c) {
+      return backend.getCatalog(true).then(function (c) {
         if (c.offline) throw Object.assign(new Error('offline'), { code: 'network' });
         var hit = c.list.filter(function (p) { return p.id === plugin.id; })[0];
         return { latest: hit ? hit.version : plugin.version };

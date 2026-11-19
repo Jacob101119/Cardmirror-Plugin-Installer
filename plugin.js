@@ -9,7 +9,7 @@
   'use strict';
 
   var PLUGIN_ID = 'plugin-manager';
-  var PM_VERSION = '0.1.13'; // kept in sync with cardmirror-plugin.json by the release workflow
+  var PM_VERSION = '0.1.14'; // kept in sync with cardmirror-plugin.json by the release workflow
 
   // Self-update: if a newer copy of this manager was downloaded on an earlier
   // launch (see selfUpdateCheck), run that copy instead of this file. The

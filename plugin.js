@@ -121,7 +121,7 @@
     try { localStorage.setItem(LS + k, JSON.stringify(v)); return true; } catch (e) { return false; }
   }
 
-  // ---------------------------------------------------------------------------
+  // ----------------------------------------------------------------------------
   // Diagnostics log
   //
   // Kept in localStorage (survives restarts) and mirrored to the console. View

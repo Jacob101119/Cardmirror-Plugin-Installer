@@ -91,6 +91,7 @@
       accent: ['#e4e4e7', '#d4d4d8'],
       iconColor: '#111111',
       icon: 'search',
+      openCommand: 'cardmirror-heading-search.open', // "Heading Search: Open (standalone window)"
     },
     {
       id: 'quick-files',
@@ -102,6 +103,7 @@
       accent: ['#71717a', '#3f3f46'],
       iconColor: '#ffffff',
       icon: 'pin',
+      openCommand: 'pinned-files.openPanel', // "QuickFiles: Open Panel"
     },
     {
       id: 'themes',
@@ -113,6 +115,7 @@
       accent: ['#f97316', '#db2777'],
       iconColor: '#ffffff',
       icon: 'brush',
+      openCommand: 'cardmirror-themes.picker', // "Themes: Choose theme…"
     },
   ];
 
@@ -238,6 +241,51 @@
     loadedThisSession[id] = true;
     log('info', 'bundle.run.ok', { id: id, via: 'eval' });
     return 'live';
+  }
+
+  // ---------------------------------------------------------------------------
+  // Command registry
+  //
+  // Wraps CardMirror's register function so the manager learns each plugin's
+  // commands and the API object CardMirror hands that plugin. Clicking an
+  // installed plugin's tile then runs its "open" command with the plugin's own
+  // API, exactly as the command palette would.
+  // ---------------------------------------------------------------------------
+  var commandRegistry = (window.__cmPluginCommandRegistry = window.__cmPluginCommandRegistry || {});
+
+  function hookRegister() {
+    var orig = window.__registerCardMirrorPlugin;
+    if (typeof orig !== 'function' || orig.__cmManagerHook) return;
+    var hooked = function (def) {
+      var entries = [];
+      try {
+        (def && Array.isArray(def.commands) ? def.commands : []).forEach(function (c) {
+          if (!c || !c.id || typeof c.run !== 'function') return;
+          var entry = { run: c.run, api: null, label: c.label, plugin: def.id };
+          // If CardMirror doesn't return the API at registration, we still
+          // learn it the first time the command runs from the palette.
+          var run = c.run;
+          c.run = function (api) { if (api) entry.api = api; return run.apply(this, arguments); };
+          commandRegistry[c.id] = entry; entries.push(entry);
+        });
+      } catch (e) { log('warn', 'registry.hookFailed', { plugin: def && def.id, error: errInfo(e) }); }
+      var ret = orig.apply(this, arguments);
+      if (ret && typeof ret === 'object') entries.forEach(function (en) { en.api = ret; });
+      return ret;
+    };
+    hooked.__cmManagerHook = true;
+    try { window.__registerCardMirrorPlugin = hooked; } catch (e) { log('warn', 'registry.unavailable', errInfo(e)); }
+  }
+
+  // Runs another plugin's command. Returns false if it isn't loaded.
+  function runPluginCommand(commandId) {
+    var en = commandRegistry[commandId];
+    if (!en) { log('warn', 'openPlugin.notRegistered', { command: commandId }); return false; }
+    log('info', 'openPlugin.run', { command: commandId, haveApi: !!en.api });
+    Promise.resolve().then(function () { return en.run(en.api); }).catch(function (e) {
+      log('error', 'openPlugin.failed', { command: commandId, error: errInfo(e) });
+    });
+    return true;
   }
 
   function bootInstalledBundles() {
@@ -446,7 +494,7 @@
         // validated colors/icon are used, so new plugins look right with no
         // edit here. Remote image URLs are never used (not trusted/guaranteed).
         accent: local.accent || remote.accent, iconColor: local.iconColor || remote.iconColor,
-        icon: local.icon || remote.icon, image: local.image,
+        icon: local.icon || remote.icon, image: local.image, openCommand: local.openCommand,
       };
     });
   }
@@ -821,6 +869,8 @@
     '.body{flex:1;overflow:auto;padding:20px}',
     '.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}',
     '.card{border:1px solid var(--line);border-radius:14px;padding:16px;background:var(--bg);display:flex;flex-direction:column;gap:12px;transition:box-shadow .15s,border-color .15s}',
+    '.openable{cursor:pointer}',
+    '.item.openable:hover{border-color:color-mix(in srgb,var(--brand) 35%,var(--line))}',
     '.card:hover{box-shadow:0 6px 22px rgba(0,0,0,.09);border-color:color-mix(in srgb,var(--brand) 35%,var(--line))}',
     '.row{display:flex;gap:12px;align-items:flex-start}',
     '.tile{flex:none;width:48px;height:48px;border-radius:12px;display:grid;place-items:center;color:#fff}',
@@ -1119,6 +1169,16 @@
     }
 
     // ---- actions ----
+    function openPlugin(p) {
+      if (!p || !p.openCommand) return;
+      // Close first so the plugin's own window isn't hidden behind this one.
+      if (commandRegistry[p.openCommand]) { close(); runPluginCommand(p.openCommand); return; }
+      var rec = installed()[p.id] || {};
+      toast(loadedThisSession[p.id] || rec.needsRestart
+        ? p.name + ' isn\u2019t ready yet \u2014 restart CardMirror, then try again'
+        : 'Couldn\u2019t open ' + p.name + ' \u2014 restart CardMirror, then try again', true);
+    }
+
     function startInstall(p) {
       if (p.tier === 'premium') { state.modal = { plugin: p, error: null, loading: false, key: '', fresh: true }; render(); return; }
       state.busy[p.id] = 'installing'; render();
@@ -1342,9 +1402,11 @@
       else if (rec) action = '<button class="btn" disabled>' + icon('check', 14) + 'Installed</button>';
       else action = '<button class="btn primary" data-act="install" data-id="' + esc(p.id) + '">' + icon(p.tier === 'premium' ? 'key' : 'download', 14) + (p.tier === 'premium' ? 'Install\u2026' : 'Install') + '</button>';
       var status = rec
-        ? '<span class="status ok">' + icon('check', 13) + 'Installed v' + esc(rec.version) + '</span>'
+        ? '<span class="status ok">' + icon('check', 13) + 'Installed v' + esc(rec.version) + (p.openCommand ? ' \u00b7 click to open' : '') + '</span>'
         : '<span class="status">Not installed</span>';
-      return '<div class="card"><div class="row">' + tile(p) +
+      var openable = rec && p.openCommand && !busy;
+      return '<div class="card' + (openable ? ' openable' : '') + '"' +
+        (openable ? ' data-act="open-plugin" data-id="' + esc(p.id) + '" title="Open ' + esc(p.name) + '"' : '') + '><div class="row">' + tile(p) +
         '<div><div class="name">' + esc(p.name) + tierTag(p) + '</div><div class="meta">v' + esc(p.version) + ' \u00b7 ' + esc(p.author || '') + '</div></div></div>' +
         '<div class="desc">' + esc(p.description) + '</div>' +
         '<div class="foot">' + status + '<span class="grow"></span>' + action + '</div></div>';
@@ -1384,7 +1446,9 @@
           : (hasUpd ? '<button class="btn primary" data-act="update" data-id="' + esc(id) + '">' + icon('download', 14) + 'Install update</button>'
               : '<button class="btn" data-act="check" data-id="' + esc(id) + '"' + (checking ? ' disabled' : '') + '>' + icon('refresh', 14) + 'Check for updates</button>') +
             '<button class="btn danger" data-act="uninstall" data-id="' + esc(id) + '">' + icon('trash', 14) + 'Uninstall</button>';
-        return '<div class="item">' + tile(p, 22) +
+        var openable = p.openCommand && !busy;
+        return '<div class="item' + (openable ? ' openable' : '') + '"' +
+          (openable ? ' data-act="open-plugin" data-id="' + esc(id) + '" title="Open ' + esc(p.name) + '"' : '') + '>' + tile(p, 22) +
           '<div class="info"><div class="name">' + esc(p.name) + tierTag(p) + '</div>' +
           '<div class="meta">Installed v' + esc(rec.version) + (rec.needsRestart && loadedThisSession[id] ? ' \u00b7 restart CardMirror to apply' : '') + '</div>' +
           '<div style="display:flex;gap:14px;margin-top:6px;flex-wrap:wrap">' + upd + lic + '</div></div>' +
@@ -1493,6 +1557,7 @@
       if (act === 'close') close();
       else if (act === 'tab') { state.view = t.getAttribute('data-v'); render(); }
       else if (act === 'install') startInstall(byId(id));
+      else if (act === 'open-plugin') openPlugin(byId(id));
       else if (act === 'fab-toggle') {
         var on = !fabEnabled(); sset('fab', on); render();
         toast(on ? 'Floating button on' : 'Floating button off \u2014 open from the command palette');
@@ -1552,6 +1617,7 @@
 
   // Re-run every plugin installed through the manager (after our own
   // registration, so the manager always loads first).
+  hookRegister();
   bootInstalledBundles();
 
   // Usage ping, plugin auto-updates, manager self-update (all silent).

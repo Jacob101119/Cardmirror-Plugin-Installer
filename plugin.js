@@ -9,7 +9,30 @@
   'use strict';
 
   var PLUGIN_ID = 'plugin-manager';
-  var PM_VERSION = '0.1.8';
+  var PM_VERSION = '0.1.10'; // kept in sync with cardmirror-plugin.json by the release workflow
+
+  // Self-update: if a newer copy of this manager was downloaded on an earlier
+  // launch (see selfUpdateCheck), run that copy instead of this file. The
+  // flag stops the newer copy from doing the same check again.
+  var SELF_KEY = 'cm-plugin-manager:self';
+  if (!window.__cmPluginManagerSelfBoot) {
+    var selfCopy = null;
+    try { selfCopy = JSON.parse(localStorage.getItem(SELF_KEY) || 'null'); } catch (e) {}
+    if (selfCopy && typeof selfCopy.code === 'string' && cmpVer(selfCopy.version, PM_VERSION) > 0) {
+      window.__cmPluginManagerSelfBoot = { from: PM_VERSION, to: selfCopy.version };
+      try {
+        new Function(selfCopy.code + '\n//# sourceURL=cardmirror-plugin-manager-' + selfCopy.version + '.js')();
+        return; // the newer copy is now running; skip the rest of this file
+      } catch (e) {
+        // Broken download: forget it and carry on with this file's version.
+        try { localStorage.removeItem(SELF_KEY); } catch (e2) {}
+        window.__cmPluginManagerSelfBoot = { from: PM_VERSION, to: selfCopy.version, failed: String(e && e.message || e) };
+      }
+    } else if (selfCopy) {
+      // The file on disk is the same or newer than the saved copy.
+      try { localStorage.removeItem(SELF_KEY); } catch (e) {}
+    }
+  }
   var SPEECHDROP_ICON = 'data:image/png;base64,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';
 
   // ---------------------------------------------------------------------------
@@ -29,6 +52,16 @@
       // 'https://plugins.example.com',
       'https://cardmirror-licensing.jacob-w-scherrer-cloudfare.workers.dev',
     ],
+    // Usage ping + feedback (the CardMirror-Plugin-Admin Worker).
+    ADMIN_API: 'https://cardmirror-plugin-admin.jacob-w-scherrer-cloudfare.workers.dev',
+    USAGE_PING: true,              // anonymous check-in, at most every 12h
+    PING_EVERY_MS: 12 * 60 * 60 * 1000,
+    // Where the manager looks for newer copies of itself (GitHub releases).
+    SELF_UPDATE: {
+      manifest: 'https://raw.githubusercontent.com/Jacob101119/Cardmirror-Plugin-Installer/main/cardmirror-plugin.json',
+      code: 'https://raw.githubusercontent.com/Jacob101119/Cardmirror-Plugin-Installer/v{version}/plugin.js',
+    },
+    AUTO_UPDATE_DELAY_MS: 6000,    // wait after startup before background updates
     MAX_BUNDLE_BYTES: 5 * 1024 * 1024, // same cap CardMirror's own installer uses
     TIMEOUT_MS: 20000,
     LOG_MAX: 300, // entries kept in the diagnostics log
@@ -474,6 +507,130 @@
 
   function delay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
+  // Plain fetch helpers for servers other than the plugin server.
+  function fetchWithTimeout(url, opts, ms) {
+    var ctl = new AbortController(), timedOut = false;
+    var timer = setTimeout(function () { timedOut = true; ctl.abort(); }, ms);
+    return fetch(url, Object.assign({ cache: 'no-store', signal: ctl.signal }, opts)).then(function (res) {
+      return res.text().then(function (text) {
+        clearTimeout(timer);
+        if (/text\/html/i.test(res.headers.get('Content-Type') || '') && !/\.html?$/.test(url)) {
+          var m = text.match(BLOCK_RE);
+          throw connError('filtered', { url: url, status: res.status, filterHint: m ? m[0] : null, finalUrl: res.redirected ? redactUrl(res.url) : undefined });
+        }
+        return { res: res, text: text };
+      });
+    }, function (err) {
+      clearTimeout(timer);
+      throw connError(timedOut ? 'timeout' : 'network', { url: url, errName: err && err.name, errMessage: err && err.message });
+    });
+  }
+  function fetchText(url, ms) {
+    return fetchWithTimeout(url, {}, ms).then(function (r) {
+      if (!r.res.ok) throw Object.assign(new Error('HTTP ' + r.res.status), { code: 'server', status: r.res.status });
+      return r.text;
+    });
+  }
+  // text/plain body = no CORS preflight; the Worker parses it as JSON.
+  function postJson(url, body) {
+    return fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' }, body: JSON.stringify(body) }, 15000)
+      .then(function (r) {
+        var j = null; try { j = JSON.parse(r.text); } catch (e) {}
+        if (!r.res.ok) throw Object.assign(new Error('HTTP ' + r.res.status), { code: 'server', status: r.res.status, serverMessage: j && j.error });
+        return j || {};
+      });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Background jobs, run once a few seconds after CardMirror starts
+  // ---------------------------------------------------------------------------
+  function bgDeviceId() {
+    var id = lsGet('deviceId', null);
+    if (!id) { id = uuid(); lsSet('deviceId', id); }
+    return id;
+  }
+
+  // Anonymous check-in so the admin dashboard can count users.
+  function usagePing() {
+    if (!CONFIG.USAGE_PING || !CONFIG.ADMIN_API) return Promise.resolve();
+    if (Date.now() - lsGet('lastPing', 0) < CONFIG.PING_EVERY_MS) return Promise.resolve();
+    var inst = lsGet('installed', {});
+    return postJson(CONFIG.ADMIN_API + '/api/public/ping', {
+      deviceId: bgDeviceId(), managerVersion: PM_VERSION, platform: navigator.platform,
+      plugins: Object.keys(inst).map(function (id) { return { id: id, version: inst[id].version }; }),
+    }).then(function () {
+      lsSet('lastPing', Date.now()); log('info', 'usage.ping.ok');
+    }, function (e) { log('warn', 'usage.ping.failed', errInfo(e)); });
+  }
+
+  // Download newer versions of installed plugins. Each plugin already ran
+  // this session, so the new code takes effect on the next launch.
+  function autoUpdatePlugins() {
+    var inst = lsGet('installed', {}), ids = Object.keys(inst);
+    if (!ids.length) return Promise.resolve();
+    return backend.getCatalog(true).then(function (c) {
+      if (c.offline) { log('warn', 'autoUpdate.skipped', { reason: 'catalog unavailable' }); return; }
+      var due = c.list.filter(function (p) { return inst[p.id] && cmpVer(p.version, inst[p.id].version) > 0; });
+      log('info', 'autoUpdate.check', { installed: ids.length, due: due.map(function (p) { return p.id + '@' + p.version; }) });
+      return due.reduce(function (chain, p) {
+        return chain.then(function () {
+          var keys = lsGet('licenses', {});
+          var run = p.tier !== 'premium' ? backend.installFree(p)
+            : keys[p.id] ? backend.installPremium(p, bgDeviceId(), keys[p.id])
+            : Promise.reject(Object.assign(new Error('No saved license'), { code: 'invalid' }));
+          return run.then(function (r) {
+            var bundles = lsGet('bundles', {});
+            bundles[p.id] = { code: r.code, version: r.version };
+            if (!lsSet('bundles', bundles)) throw Object.assign(new Error('Not enough local storage.'), { code: 'storage' });
+            var m = lsGet('installed', {});
+            m[p.id] = Object.assign({}, m[p.id], { version: r.version, updatedAt: Date.now(), needsRestart: !!loadedThisSession[p.id], autoUpdated: true });
+            lsSet('installed', m);
+            log('info', 'autoUpdate.ok', { id: p.id, version: r.version });
+          }).catch(function (e) {
+            log('warn', 'autoUpdate.failed', { id: p.id, error: errInfo(e) });
+            if (p.tier === 'premium' && /^(expired|revoked|invalid|bound)$/.test(e.code || '')) {
+              var m = lsGet('installed', {});
+              if (m[p.id]) { m[p.id].license = Object.assign({}, m[p.id].license, { status: e.code }); lsSet('installed', m); }
+            }
+          });
+        });
+      }, Promise.resolve());
+    });
+  }
+
+  // Download a newer Plugin Manager from GitHub releases. It's saved locally
+  // and picked up by the self-update check at the top of this file on the
+  // next launch, with no prompt.
+  function selfUpdateCheck() {
+    var su = CONFIG.SELF_UPDATE;
+    if (!su || !su.manifest) return Promise.resolve();
+    return fetchText(su.manifest + '?t=' + Date.now(), 15000).then(function (text) {
+      var v = String((JSON.parse(text) || {}).version || '');
+      if (!/^\d+\.\d+\.\d+$/.test(v)) throw new Error('Bad version in manifest: ' + v);
+      if (cmpVer(v, PM_VERSION) <= 0) { log('info', 'selfUpdate.current', { running: PM_VERSION, latest: v }); return; }
+      var saved = lsGet('self', null);
+      if (saved && saved.version === v) { log('info', 'selfUpdate.pending', { version: v, note: 'applies on next launch' }); return; }
+      return fetchText(su.code.replace('{version}', v), 20000).then(function (code) {
+        if (code.length > CONFIG.MAX_BUNDLE_BYTES) throw new Error('Downloaded manager is too large.');
+        if (code.indexOf('__registerCardMirrorPlugin') < 0 || code.indexOf("PM_VERSION = '" + v + "'") < 0) {
+          throw new Error('Downloaded manager failed checks (wrong file or version).');
+        }
+        try { new Function(code); } catch (e) { throw new Error('Downloaded manager has a syntax error: ' + e.message); } // compile only
+        if (!lsSet('self', { version: v, code: code, savedAt: Date.now() })) throw new Error('Not enough local storage.');
+        log('info', 'selfUpdate.saved', { from: PM_VERSION, to: v, chars: code.length, note: 'applies on next launch' });
+      });
+    }).catch(function (e) { log('warn', 'selfUpdate.failed', errInfo(e)); });
+  }
+
+  function runBackgroundJobs() {
+    if (window.__cmPluginManagerBgStarted) return;
+    window.__cmPluginManagerBgStarted = true;
+    setTimeout(function () {
+      usagePing();
+      autoUpdatePlugins().catch(function (e) { log('warn', 'autoUpdate.crashed', errInfo(e)); }).then(selfUpdateCheck);
+    }, CONFIG.AUTO_UPDATE_DELAY_MS);
+  }
+
   // ---------------------------------------------------------------------------
   // Connection test (Diagnostics -> "Run connection test")
   //
@@ -708,6 +865,9 @@
     '.modal.wide{width:min(720px,94%)}',
     '.logbox{width:100%;height:300px;resize:vertical;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg2);color:var(--fg);font:11px/1.45 ui-monospace,Menlo,Consolas,monospace;white-space:pre;outline:0}',
     '.verdict{margin:0 0 12px;padding:10px 14px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);font-size:12.5px;line-height:1.5}',
+    '.toast.bad svg{color:#f87171}',
+    '.input.plain{font-family:inherit;letter-spacing:normal;font-size:13px}',
+    'textarea.input{resize:vertical;min-height:96px;line-height:1.45}',
     '.steps{margin:0 0 12px;padding-left:20px;font-size:13px;line-height:1.6}',
     '.steps li{margin-bottom:8px}',
     '.steps .btn{margin:4px 6px 0 0;padding:4px 10px;font-size:12px;text-decoration:none;color:var(--fg)}',
@@ -827,14 +987,16 @@
       if (e.key === 'Escape') {
         e.stopPropagation();
         if (state.diag) closeDiag();
+        else if (state.feedback) { if (!state.feedback.sending) { state.feedback = null; render(); } }
         else if (state.browserDl) { if (!state.browserDl.loading) { state.browserDl = null; render(); } }
         else if (state.modal) { state.modal = null; render(); } else close();
       }
     }
     document.addEventListener('keydown', onKey, true);
 
-    function toast(msg) {
-      state.toast = msg; render();
+    // bad = true shows an X instead of a check (for failures).
+    function toast(msg, bad) {
+      state.toast = msg; state.toastBad = !!bad; render();
       setTimeout(function () { if (state.toast === msg) { state.toast = null; render(); } }, 2600);
     }
 
@@ -865,7 +1027,7 @@
         var ta = root.querySelector('#logbox');
         if (ta) { ta.focus(); ta.select(); }
         var ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
-        toast(ok ? 'Log copied' : 'Select the log text and copy it manually');
+        toast(ok ? 'Log copied' : 'Select the log text and copy it manually', !ok);
       };
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { toast('Log copied'); }, fallback);
       else fallback();
@@ -888,7 +1050,7 @@
     }
 
     function copyText(text, okMsg) {
-      var fail = function () { toast('Couldn’t copy — select the link and copy it manually'); };
+      var fail = function () { toast('Couldn’t copy — select the link and copy it manually', true); };
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { toast(okMsg); }, fail);
       else fail();
     }
@@ -956,7 +1118,7 @@
         log('error', 'install.failed', { id: p.id, error: errInfo(e) });
         delete state.busy[p.id];
         if (isConnErr(e)) { openBrowserDl(p, e); return; }
-        toast('Install failed: ' + errorMessage(e)); render();
+        toast('Install failed: ' + errorMessage(e), true); render();
       });
     }
 
@@ -1027,7 +1189,7 @@
         if (p.tier === 'premium' && (e.code === 'expired' || e.code === 'revoked' || e.code === 'invalid' || e.code === 'bound')) {
           var m = installed(); if (m[p.id]) { m[p.id].license = Object.assign({}, m[p.id].license, { status: e.code }); setInstalled(m); }
         }
-        toast('Update failed: ' + errorMessage(e)); render();
+        toast('Update failed: ' + errorMessage(e), true); render();
       });
     }
 
@@ -1062,21 +1224,89 @@
     function checkUpdatesFor(id) {
       checkOne(id).then(function (found) {
         var p = byId(id);
-        if (found === null) toast('Couldn\u2019t check ' + (p ? p.name : id) + ' for updates');
+        if (found === null) toast('Couldn\u2019t check ' + (p ? p.name : id) + ' for updates', true);
         else toast(found ? 'Update available for ' + p.name : p.name + ' is up to date');
         render();
       });
     }
+    // One fresh catalog fetch: refreshes the Browse list (new plugins show up)
+    // and the newest version of everything installed.
     function checkAll() {
-      var ids = Object.keys(installed()).filter(function (id) { return byId(id) && !state.checking[id]; });
-      if (!ids.length) return;
-      Promise.all(ids.map(checkOne)).then(function (res) {
-        var n = res.filter(function (x) { return x === true; }).length;
-        var failed = res.filter(function (x) { return x === null; }).length;
-        toast(failed === ids.length ? 'Couldn\u2019t check for updates'
-          : n ? n + (n === 1 ? ' update available' : ' updates available') : 'Everything is up to date');
+      if (state.checkingAll) return;
+      state.checkingAll = true; render();
+      var before = (state.catalog || []).map(function (p) { return p.id; });
+      backend.getCatalog(true).then(function (c) {
+        state.checkingAll = false;
+        if (c.offline) { toast('Couldn\u2019t check for updates', true); render(); return; }
+        state.catalog = c.list; state.offline = false; state.loadError = null;
+        var m = installed(), n = 0;
+        Object.keys(m).forEach(function (id) {
+          var p = byId(id); if (!p) return;
+          state.latest[id] = p.version; state.checked[id] = 'ok';
+          if (cmpVer(p.version, m[id].version) > 0) n++;
+        });
+        var added = c.list.filter(function (p) { return before.indexOf(p.id) < 0; }).length;
+        log('info', 'update.checkAll', { updates: n, newPlugins: added });
+        toast((n ? n + (n === 1 ? ' update available' : ' updates available') : 'Everything is up to date') +
+          (added ? ' \u00b7 ' + added + ' new plugin' + (added === 1 ? '' : 's') : ''));
         render();
       });
+    }
+
+    // ---- feedback ----
+    function openFeedback() {
+      state.feedback = { kind: 'idea', message: '', email: '', sending: false, error: null, fresh: true };
+      render();
+      var t = root.querySelector('#fbmsg'); if (t) t.focus();
+    }
+    function feedbackPlugins() {
+      var m = installed();
+      return Object.keys(m).map(function (id) { return { id: id, version: m[id].version }; });
+    }
+    function mailtoFeedback(f) {
+      var body = f.message + '\n\n---\nType: ' + f.kind + '\nManager v' + PM_VERSION + ' on ' + navigator.platform +
+        '\nPlugins: ' + feedbackPlugins().map(function (p) { return p.id + '@' + p.version; }).join(', ');
+      return 'mailto:jacobscardmirrorplugins@gmail.com?subject=' + encodeURIComponent('[CardMirror ' + f.kind + '] Feedback') +
+        '&body=' + encodeURIComponent(body.slice(0, 1500));
+    }
+    function sendFeedback() {
+      var f = state.feedback; if (!f || f.sending) return;
+      f.message = (f.message || '').trim(); f.email = (f.email || '').trim();
+      if (f.message.length < 3) { f.error = 'Please write a little more.'; render(); return; }
+      f.sending = true; f.error = null; f.offerMail = false; render();
+      postJson(CONFIG.ADMIN_API + '/api/public/feedback', {
+        kind: f.kind, message: f.message, email: f.email, deviceId: deviceId(),
+        managerVersion: PM_VERSION, platform: navigator.platform, plugins: feedbackPlugins(),
+      }).then(function () {
+        log('info', 'feedback.sent', { kind: f.kind, chars: f.message.length });
+        state.feedback = null; toast('Thanks! Your feedback was sent.'); render();
+      }, function (e) {
+        log('error', 'feedback.failed', errInfo(e));
+        if (!state.feedback) return;
+        f.sending = false;
+        f.error = e.serverMessage || (isConnErr(e) ? 'Couldn\u2019t reach the feedback server (it may be blocked on this network).' : 'Couldn\u2019t send feedback.');
+        f.offerMail = !e.serverMessage;
+        render();
+      });
+    }
+    function feedbackView() {
+      var f = state.feedback; if (!f) return '';
+      var dis = f.sending ? ' disabled' : '';
+      var opt = function (v, label) { return '<option value="' + v + '"' + (f.kind === v ? ' selected' : '') + '>' + label + '</option>'; };
+      return '<div class="modalscrim" data-act="fb-bg"><div class="modal' + (f.fresh ? ' enter' : '') + '">' +
+        '<h2>Send feedback</h2>' +
+        '<p>Found a bug or have an idea? This goes straight to the developer.</p>' +
+        '<label class="field" for="fbkind">Type</label>' +
+        '<select id="fbkind" class="input plain"' + dis + '>' + opt('idea', 'Idea / request') + opt('bug', 'Bug') + opt('other', 'Other') + '</select>' +
+        '<label class="field" for="fbmsg" style="margin-top:12px">Message</label>' +
+        '<textarea id="fbmsg" class="input plain" rows="5" maxlength="4000" placeholder="What happened, or what would you like?"' + dis + '>' + esc(f.message) + '</textarea>' +
+        '<label class="field" for="fbemail" style="margin-top:12px">Your email (optional, for a reply)</label>' +
+        '<input id="fbemail" class="input plain" type="email" placeholder="you@example.com" value="' + esc(f.email) + '"' + dis + '>' +
+        (f.error ? '<div class="err">' + icon('alert', 15) + '<span>' + esc(f.error) +
+          (f.offerMail ? ' <a href="' + esc(mailtoFeedback(f)) + '" style="color:inherit">Email it instead</a>.' : '') + '</span></div>' : '') +
+        '<div class="mfoot"><button class="btn" data-act="fb-cancel"' + dis + '>Cancel</button>' +
+        '<button class="btn primary" data-act="fb-send"' + dis + '>' + (f.sending ? spinner() + 'Sending\u2026' : 'Send') + '</button></div>' +
+        '</div></div>';
     }
 
     // ---- view helpers ----
@@ -1170,7 +1400,8 @@
       var d = state.diag; if (!d) return '';
       return '<div class="modalscrim" data-act="diag-bg"><div class="modal wide' + (d.fresh ? ' enter' : '') + '">' +
         '<h2>Diagnostics</h2>' +
-        '<p>Run the connection test on the computer where installs fail, then copy the log and send it over. License keys are never recorded.</p>' +
+        '<p>Run the connection test on the computer where installs fail, then copy the log and send it over. License keys are never recorded. ' +
+        'The manager also sends an anonymous check-in about twice a day (a random install ID, app versions and OS) so the developer can count users.</p>' +
         (d.verdict ? '<div class="verdict"><b>Result:</b> ' + esc(d.verdict) + '</div>' : '') +
         '<textarea id="logbox" class="logbox" readonly spellcheck="false">' + esc(diagText()) + '</textarea>' +
         '<div class="mfoot">' +
@@ -1184,9 +1415,11 @@
 
     // ---- render ----
     var firstRender = true;
+    var KEEP_FOCUS = { q: 1, fbmsg: 1, fbemail: 1 };
     function render() {
       var focused = root.activeElement && root.activeElement.id;
-      var caret = focused === 'q' ? root.activeElement.selectionStart : null;
+      var caret = null;
+      try { caret = KEEP_FOCUS[focused] ? root.activeElement.selectionStart : null; } catch (e) {}
       var count = Object.keys(installed()).length;
       var body = state.view === 'browse' ? browseView() : installedView();
 
@@ -1199,23 +1432,28 @@
         '<button class="tab ' + (state.view === 'browse' ? 'on' : '') + '" data-act="tab" data-v="browse">' + icon('store', 14) + 'Browse</button>' +
         '<button class="tab ' + (state.view === 'installed' ? 'on' : '') + '" data-act="tab" data-v="installed">' + icon('box', 14) + 'Installed' + (count ? '<span class="pill">' + count + '</span>' : '') + '</button></div>' +
         (state.view === 'browse'
-          ? '<div class="search">' + icon('search', 15) + '<input id="q" placeholder="Search plugins\u2026" value="' + esc(state.query) + '"></div>' 
+          ? '<div class="search">' + icon('search', 15) + '<input id="q" placeholder="Search plugins\u2026" value="' + esc(state.query) + '"></div>' +
+            '<button class="btn" data-act="check-all"' + (state.checkingAll ? ' disabled' : '') + '>' +
+            (state.checkingAll ? spinner() : icon('refresh', 14)) + 'Check for updates</button>'
           : '<span class="grow"></span><button class="btn" data-act="check-all"' +
-            (Object.keys(state.checking).length || !Object.keys(installed()).length ? ' disabled' : '') + '>' +
-            (Object.keys(state.checking).length ? spinner() : icon('refresh', 14)) + 'Check all for updates</button>') +
+            (state.checkingAll || Object.keys(state.checking).length || !Object.keys(installed()).length ? ' disabled' : '') + '>' +
+            (state.checkingAll || Object.keys(state.checking).length ? spinner() : icon('refresh', 14)) + 'Check all for updates</button>') +
         '</div><div class="body">' +
         (state.offline ? '<div class="banner">' + icon('alert', 15) + '<span>Couldn\u2019t reach the plugin server \u2014 showing the last saved catalog. Installing needs a connection. ' +
           '<button class="linkbtn" style="color:inherit;font-size:inherit" data-act="diag">Open Diagnostics</button></span></div>' : '') +
         body + '</div>' +
-        '<footer><button class="linkbtn" data-act="diag">Diagnostics</button><span class="mid">Contact developer \u2013 <a href="mailto:jacobscardmirrorplugins@gmail.com">jacobscardmirrorplugins@gmail.com</a></span>' +
+        '<footer><span style="display:flex;gap:14px"><button class="linkbtn" data-act="feedback">Send feedback</button><button class="linkbtn" data-act="diag">Diagnostics</button></span><span class="mid">Contact developer \u2013 <a href="mailto:jacobscardmirrorplugins@gmail.com">jacobscardmirrorplugins@gmail.com</a></span>' +
         '<button class="tog ' + (fabEnabled() ? 'on' : '') + '" data-act="fab-toggle" role="switch" aria-checked="' + fabEnabled() + '">Floating button<span class="sw"></span></button></footer>' +
-        modalView() + browserDlView() + diagView() +
-        (state.toast ? '<div class="toast">' + icon('check', 15) + esc(state.toast) + '</div>' : '') +
+        modalView() + browserDlView() + feedbackView() + diagView() +
+        (state.toast ? '<div class="toast' + (state.toastBad ? ' bad' : '') + '">' + icon(state.toastBad ? 'x' : 'check', 15) + esc(state.toast) + '</div>' : '') +
         '</div></div>';
 
-      firstRender = false; if (state.modal) state.modal.fresh = false; if (state.diag) state.diag.fresh = false; if (state.browserDl) state.browserDl.fresh = false;
+      firstRender = false; if (state.modal) state.modal.fresh = false; if (state.diag) state.diag.fresh = false; if (state.browserDl) state.browserDl.fresh = false; if (state.feedback) state.feedback.fresh = false;
       var lb = root.querySelector('#logbox'); if (lb) lb.scrollTop = lb.scrollHeight;
-      if (focused === 'q') { var el = root.querySelector('#q'); if (el) { el.focus(); el.setSelectionRange(caret, caret); } }
+      if (KEEP_FOCUS[focused]) {
+        var el = root.querySelector('#' + focused);
+        if (el && !el.disabled) { el.focus(); try { if (caret != null) el.setSelectionRange(caret, caret); } catch (e) {} }
+      }
       if (state.modal && !state.modal.loading) { var l = root.querySelector('#lic'); if (l) { l.focus(); l.setSelectionRange(l.value.length, l.value.length); } }
     }
 
@@ -1231,6 +1469,10 @@
       if (act === 'bd-open') { log('info', 'browserDl.open', { id: state.browserDl && state.browserDl.plugin.id }); return; } // link opens itself
       if (act === 'bd-copy') { if (state.browserDl) copyText(downloadUrl(state.browserDl.plugin), 'Link copied — paste it into your browser'); return; }
       if (act === 'bd-pick') { var fi = root.querySelector('#bdfile'); if (fi) fi.click(); return; }
+      if (act === 'feedback') { openFeedback(); return; }
+      if (act === 'fb-bg') { if (e.target === t && !state.feedback.sending) { state.feedback = null; render(); } return; }
+      if (act === 'fb-cancel') { state.feedback = null; render(); return; }
+      if (act === 'fb-send') { sendFeedback(); return; }
       if (act === 'diag') { openDiag(); return; }
       if (act === 'diag-close') { closeDiag(); return; }
       if (act === 'diag-test') { runDiagTest(); return; }
@@ -1252,8 +1494,11 @@
     });
     root.addEventListener('change', function (e) {
       if (e.target.id === 'bdfile' && e.target.files && e.target.files[0]) importFromFile(e.target.files[0]);
+      if (e.target.id === 'fbkind' && state.feedback) state.feedback.kind = e.target.value;
     });
     root.addEventListener('input', function (e) {
+      if (e.target.id === 'fbmsg' && state.feedback) state.feedback.message = e.target.value;
+      if (e.target.id === 'fbemail' && state.feedback) state.feedback.email = e.target.value;
       if (e.target.id === 'q') { state.query = e.target.value; render(); }
       if (e.target.id === 'lic' && state.modal) state.modal.key = e.target.value;
     });
@@ -1290,11 +1535,15 @@
   log('info', 'boot', {
     version: PM_VERSION, registered: !!window.__registerCardMirrorPlugin,
     online: navigator.onLine, origin: location.origin, userAgent: navigator.userAgent,
+    selfBoot: window.__cmPluginManagerSelfBoot || null,
   });
 
   // Re-run every plugin installed through the manager (after our own
   // registration, so the manager always loads first).
   bootInstalledBundles();
+
+  // Usage ping, plugin auto-updates, manager self-update (all silent).
+  runBackgroundJobs();
 
   // Floating button once the page is ready
   if (document.body) refreshFab();

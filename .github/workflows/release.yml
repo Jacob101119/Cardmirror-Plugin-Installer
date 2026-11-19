@@ -82,7 +82,7 @@ jobs:
           test -f cardmirror-plugin.json
           test -f plugin.js
 
-      - name: Update manifest version
+      - name: Update manifest and plugin version
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -92,6 +92,11 @@ jobs:
 
           mv manifest.tmp cardmirror-plugin.json
 
+          # The manager compares this constant against the released manifest
+          # to decide whether to self-update, so keep them in sync.
+          sed -i -E "s/var PM_VERSION = '[0-9]+\.[0-9]+\.[0-9]+'/var PM_VERSION = '$VERSION'/" plugin.js
+          grep -q "var PM_VERSION = '$VERSION'" plugin.js
+
       - name: Commit updated manifest
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -99,7 +104,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add cardmirror-plugin.json
+          git add cardmirror-plugin.json plugin.js
           git commit -m "chore: release v$VERSION" || echo "No manifest changes"
           git push
 

@@ -156,16 +156,33 @@
     return code;
   }
 
+  // Tile visuals a plugin may supply from the Worker catalog (accent: [c1, c2],
+  // iconColor, icon). Validated so a bad catalog entry can't inject markup.
+  var COLOR_RE = /^#[0-9a-fA-F]{3,8}$/;
+  function remoteVisuals(r) {
+    var v = {};
+    if (Array.isArray(r.accent) && r.accent.length === 2 && COLOR_RE.test(String(r.accent[0])) && COLOR_RE.test(String(r.accent[1]))) {
+      v.accent = [String(r.accent[0]), String(r.accent[1])];
+    }
+    if (r.iconColor && COLOR_RE.test(String(r.iconColor))) v.iconColor = String(r.iconColor);
+    if (r.icon && Object.prototype.hasOwnProperty.call(ICONS, String(r.icon))) v.icon = String(r.icon);
+    return v;
+  }
+
   function cleanCatalog(list) {
     return (Array.isArray(list) ? list : []).filter(function (r) {
       return r && ID_RE.test(String(r.id)) && r.name && (r.tier === 'free' || r.tier === 'premium') && r.version;
     }).map(function (r) {
       var local = LOCAL_CATALOG.filter(function (p) { return p.id === r.id; })[0] || {};
+      var remote = remoteVisuals(r);
       return {
         id: r.id, name: String(r.name), description: String(r.description || local.description || ''),
         tier: r.tier, version: String(r.version), author: String(r.author || local.author || ''),
-        // visuals stay local: remote image URLs aren't trusted or guaranteed to load
-        accent: local.accent, iconColor: local.iconColor, icon: local.icon, image: local.image,
+        // Local visuals win when this file has them; otherwise the Worker's
+        // validated colors/icon are used, so new plugins look right with no
+        // edit here. Remote image URLs are never used (not trusted/guaranteed).
+        accent: local.accent || remote.accent, iconColor: local.iconColor || remote.iconColor,
+        icon: local.icon || remote.icon, image: local.image,
       };
     });
   }
@@ -178,7 +195,8 @@
         if (!list.length) throw new Error('empty catalog');
         lsSet('catalog', list);
         return { list: list, offline: false };
-      }).catch(function () {
+      }).catch(function (err) {
+        console.warn('[plugin-manager] catalog load failed:', err && (err.code || err.message), err);
         return { list: lsGet('catalog', null) || LOCAL_CATALOG, offline: true };
       });
     },
@@ -197,7 +215,7 @@
     // works with the likely names; once confirmed, trim it to the real ones.
     _body: function (plugin, key, deviceId) {
       return JSON.stringify({
-        licenseKey: key, license_key: key, key: key,
+        license: key, licenseKey: key, license_key: key, key: key,
         productId: plugin.id, product_id: plugin.id, product: plugin.id,
         deviceId: deviceId, device_id: deviceId,
       });
@@ -241,6 +259,9 @@
   var ICONS = {
     bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
+    folder: '<path d="M3 6a1 1 0 0 1 1-1h5l2 2h8a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6z"/>',
+    file: '<path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7l-4-4zM14 3v4h4"/>',
+    star: '<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3z"/>',
     pin: '<path d="M12 17v5"/><path d="M9 3h6l-1 6 3 4H7l3-4-1-6z"/>',
     puzzle: '<path d="M10 4a2 2 0 1 1 4 0v1h3a1 1 0 0 1 1 1v3h1a2 2 0 1 1 0 4h-1v3a1 1 0 0 1-1 1h-3v-1a2 2 0 1 0-4 0v1H7a1 1 0 0 1-1-1v-3H5a2 2 0 1 1 0-4h1V6a1 1 0 0 1 1-1h3V4z"/>',
     download: '<path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14"/>',

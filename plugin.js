@@ -247,43 +247,127 @@
   // Command registry
   //
   // Wraps CardMirror's register function so the manager learns each plugin's
-  // commands and the API object CardMirror hands that plugin. Clicking an
-  // installed plugin's tile then runs its "open" command with the plugin's own
-  // API, exactly as the command palette would.
+  // commands. Clicking an installed plugin's tile then runs its "open" command.
+  //
+  // CardMirror creates each plugin's API object privately and only passes it
+  // to a command when CardMirror itself runs that command (palette, shortcut).
+  // Registration returns nothing. So:
+  //  - whenever CardMirror runs any of a plugin's commands, we keep the real
+  //    API it passed and use it from then on;
+  //  - until then, we build a stand-in that matches CardMirror's own API for
+  //    that plugin (storage and settings live in localStorage
+  //    "plugin:<id>", the same place CardMirror keeps them).
   // ---------------------------------------------------------------------------
   var commandRegistry = (window.__cmPluginCommandRegistry = window.__cmPluginCommandRegistry || {});
+  var pluginInfo = (window.__cmPluginInfo = window.__cmPluginInfo || {}); // pluginId -> { def, api, standIn }
 
   function hookRegister() {
     var orig = window.__registerCardMirrorPlugin;
     if (typeof orig !== 'function' || orig.__cmManagerHook) return;
     var hooked = function (def) {
-      var entries = [];
       try {
-        (def && Array.isArray(def.commands) ? def.commands : []).forEach(function (c) {
-          if (!c || !c.id || typeof c.run !== 'function') return;
-          var entry = { run: c.run, api: null, label: c.label, plugin: def.id };
-          // If CardMirror doesn't return the API at registration, we still
-          // learn it the first time the command runs from the palette.
-          var run = c.run;
-          c.run = function (api) { if (api) entry.api = api; return run.apply(this, arguments); };
-          commandRegistry[c.id] = entry; entries.push(entry);
-        });
+        var pid = def && String(def.id);
+        if (pid) {
+          var info = pluginInfo[pid] = pluginInfo[pid] || { def: def, api: null, standIn: null };
+          info.def = def;
+          (Array.isArray(def.commands) ? def.commands : []).forEach(function (c) {
+            if (!c || !c.id || typeof c.run !== 'function') return;
+            var run = c.run;
+            c.run = function (api) {
+              if (api && typeof api === 'object' && api !== info.standIn) {
+                if (!info.api) log('info', 'registry.realApi', { plugin: pid });
+                info.api = api;
+              }
+              return run.apply(this, arguments);
+            };
+            commandRegistry[c.id] = { run: c.run, label: c.label, plugin: pid };
+          });
+        }
       } catch (e) { log('warn', 'registry.hookFailed', { plugin: def && def.id, error: errInfo(e) }); }
       var ret = orig.apply(this, arguments);
-      if (ret && typeof ret === 'object') entries.forEach(function (en) { en.api = ret; });
+      if (ret && typeof ret === 'object' && def && pluginInfo[def.id]) pluginInfo[def.id].api = ret;
       return ret;
     };
     hooked.__cmManagerHook = true;
     try { window.__registerCardMirrorPlugin = hooked; } catch (e) { log('warn', 'registry.unavailable', errInfo(e)); }
   }
 
+  // Same rules CardMirror uses to read a declared setting.
+  function settingValue(decl, v) {
+    switch (decl.type) {
+      case 'boolean': return typeof v === 'boolean' ? v : decl.default;
+      case 'text': case 'multiline': return typeof v === 'string' ? v : decl.default;
+      case 'number': return typeof v === 'number' && isFinite(v) ? v : decl.default;
+      case 'select': return typeof v === 'string' && (decl.options || []).indexOf(v) >= 0 ? v : decl.default;
+      default: return v === undefined ? decl.default : v;
+    }
+  }
+
+  // Stand-in for CardMirror's per-plugin API (mirrors CardMirror 1.17's).
+  function makeStandInApi(pid) {
+    var key = 'plugin:' + pid;
+    var bag = function () { try { return JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (e) { return {}; } };
+    var decls = function () { var d = pluginInfo[pid] && pluginInfo[pid].def; return d && Array.isArray(d.settings) ? d.settings : []; };
+    var base = lastApi && typeof lastApi === 'object' ? lastApi : {};
+    var api = {
+      appVersion: base.appVersion,
+      showToast: function (msg) {
+        var s = '[' + pid + '] ' + String(msg);
+        // The manager's own toast is the closest thing to CardMirror's.
+        if (typeof base.showToast === 'function') { try { base.showToast(String(msg)); return; } catch (e) {} }
+        console.info(s);
+      },
+      storage: {
+        get: function (k) { return bag()[k]; },
+        set: function (k, v) { var b = bag(); b[k] = v; try { localStorage.setItem(key, JSON.stringify(b)); } catch (e) {} },
+      },
+      settings: {
+        get: function (k) {
+          var decl = decls().filter(function (s) { return s && s.key === k; })[0];
+          if (!decl) return undefined;
+          var raw = bag().__settings;
+          return settingValue(decl, raw && typeof raw === 'object' ? raw[k] : undefined);
+        },
+        // CardMirror's change notifications are private, so watch the stored
+        // values instead and report keys that changed.
+        onChanged: function (cb) {
+          var last = JSON.stringify(bag().__settings || {});
+          var t = setInterval(function () {
+            var cur = bag().__settings || {}, s = JSON.stringify(cur);
+            if (s === last) return;
+            var prev = {}; try { prev = JSON.parse(last); } catch (e) {}
+            last = s;
+            Object.keys(Object.assign({}, prev, cur)).forEach(function (k) {
+              if (JSON.stringify(cur[k]) !== JSON.stringify(prev[k])) { try { cb(k, cur[k]); } catch (e) {} }
+            });
+          }, 1000);
+          return function () { clearInterval(t); };
+        },
+      },
+    };
+    // Doc-related helpers aren't tied to a plugin; borrow them when available.
+    ['extractSelection', 'jumpToSource', 'flowApps', 'flowPost', 'docInfo'].forEach(function (n) {
+      if (typeof base[n] === 'function') api[n] = base[n].bind(base);
+    });
+    return api;
+  }
+
+  function apiFor(pid) {
+    var info = pluginInfo[pid];
+    if (!info) return null;
+    if (info.api) return info.api;
+    return info.standIn || (info.standIn = makeStandInApi(pid));
+  }
+
   // Runs another plugin's command. Returns false if it isn't loaded.
-  function runPluginCommand(commandId) {
+  function runPluginCommand(commandId, onFail) {
     var en = commandRegistry[commandId];
     if (!en) { log('warn', 'openPlugin.notRegistered', { command: commandId }); return false; }
-    log('info', 'openPlugin.run', { command: commandId, haveApi: !!en.api });
-    Promise.resolve().then(function () { return en.run(en.api); }).catch(function (e) {
-      log('error', 'openPlugin.failed', { command: commandId, error: errInfo(e) });
+    var info = pluginInfo[en.plugin] || {};
+    log('info', 'openPlugin.run', { command: commandId, api: info.api ? 'real' : 'stand-in' });
+    Promise.resolve().then(function () { return en.run(apiFor(en.plugin)); }).catch(function (e) {
+      log('error', 'openPlugin.failed', { command: commandId, api: info.api ? 'real' : 'stand-in', error: errInfo(e), stack: String(e && e.stack || '').slice(0, 500) });
+      if (onFail) onFail(e);
     });
     return true;
   }
@@ -941,6 +1025,22 @@
   // Plugin logic
   // ---------------------------------------------------------------------------
   var host = null; // current open instance
+  var closeOpenManager = null; // close() of the open panel, if any
+
+  // When the user closes the CardMirror window, CardMirror asks the page to
+  // confirm unsaved work (its Save / Don't Save box). Close the manager so it
+  // isn't covering that box. CardMirror's own handler still runs as usual.
+  function hookWindowClose() {
+    if (window.__cmPluginManagerCloseHook) return;
+    var eapi = window.electronAPI;
+    if (!eapi || typeof eapi.onCloseRequest !== 'function') { log('info', 'closeHook.unavailable'); return; }
+    try {
+      eapi.onCloseRequest(function () {
+        if (closeOpenManager) { log('info', 'closeHook.closedManager'); closeOpenManager(); }
+      });
+      window.__cmPluginManagerCloseHook = true;
+    } catch (e) { log('warn', 'closeHook.failed', errInfo(e)); }
+  }
 
   function uuid() {
     if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
@@ -1039,6 +1139,7 @@
     document.body.appendChild(host);
 
     function close() {
+      closeOpenManager = null;
       onLogChange = null;
       document.removeEventListener('keydown', onKey, true);
       if (host) host.remove();
@@ -1055,6 +1156,7 @@
       }
     }
     document.addEventListener('keydown', onKey, true);
+    closeOpenManager = close;
 
     // bad = true shows an X instead of a check (for failures).
     function toast(msg, bad) {
@@ -1172,7 +1274,14 @@
     function openPlugin(p) {
       if (!p || !p.openCommand) return;
       // Close first so the plugin's own window isn't hidden behind this one.
-      if (commandRegistry[p.openCommand]) { close(); runPluginCommand(p.openCommand); return; }
+      if (commandRegistry[p.openCommand]) {
+        close();
+        runPluginCommand(p.openCommand, function (e) {
+          var msg = p.name + ' couldn’t open: ' + ((e && e.message) || 'unknown error') + '. Try it from the command palette.';
+          try { if (lastApi && typeof lastApi.showToast === 'function') lastApi.showToast(msg); else console.warn(msg); } catch (x) {}
+        });
+        return;
+      }
       var rec = installed()[p.id] || {};
       toast(loadedThisSession[p.id] || rec.needsRestart
         ? p.name + ' isn\u2019t ready yet \u2014 restart CardMirror, then try again'
@@ -1618,6 +1727,7 @@
   // Re-run every plugin installed through the manager (after our own
   // registration, so the manager always loads first).
   hookRegister();
+  hookWindowClose();
   bootInstalledBundles();
 
   // Usage ping, plugin auto-updates, manager self-update (all silent).

@@ -219,6 +219,23 @@
     return SERVERS.slice();
   }
 
+  function hostOf(u) { try { return new URL(u).host; } catch (e) { return ''; } }
+
+  // Filter redirects carry device/session tokens in the query string; keep only
+  // the parts useful for debugging so the log is safe to share.
+  function redactUrl(u) {
+    try {
+      var p = new URL(u), keep = ['categoryid', 'reason', 'policyid'];
+      var q = keep.filter(function (k) { return p.searchParams.get(k) != null; })
+        .map(function (k) { return k + '=' + p.searchParams.get(k); }).join('&');
+      return p.origin + p.pathname + (q ? '?' + q + ' (other params removed)' : '');
+    } catch (e) { return '(unparseable url)'; }
+  }
+
+  function isLoginRedirect(res) {
+    return !!res.redirected && /login|signin|sign-in|sso|auth/i.test(new URL(res.url, 'https://x/').pathname);
+  }
+
   // Words that show up on school/corporate web-filter block pages.
   var BLOCK_RE = /goguardian|securly|lightspeed|fortiguard|fortinet|iboss|umbrella|opendns|zscaler|contentkeeper|smoothwall|linewize|netsweeper|blocksi|deledao|cisco|palo ?alto|sophos|barracuda|web ?filter|access denied|has been blocked|site blocked|blocked by|not allowed/i;
 
@@ -255,14 +272,15 @@
           method: method, url: url, status: res.status, ms: Date.now() - t0, type: res.type,
           contentType: ct, chars: text.length,
         };
-        if (res.redirected) { info.redirected = true; info.finalUrl = res.url; }
+        if (res.redirected) { info.redirected = true; info.finalUrl = redactUrl(res.url); }
         // The Worker only ever returns JSON or JavaScript. An HTML page means
         // something between us and Cloudflare (usually a web filter) answered.
         var looksHtml = /text\/html/i.test(ct) || /^\s*<(!doctype|html|head|body)/i.test(text);
-        if (looksHtml || !res.ok) info.bodySnippet = text.slice(0, 500);
+        if (looksHtml || !res.ok) info.bodySnippet = text.slice(0, looksHtml ? 300 : 500);
         if (looksHtml) {
           var m = text.match(BLOCK_RE);
           info.filterHint = m ? m[0] : null;
+          info.filterLogin = isLoginRedirect(res);
           log('error', 'request.blockPage', info);
           throw connError('filtered', info);
         }
@@ -469,11 +487,26 @@
     var t0 = Date.now(), ctl = new AbortController(), timedOut = false;
     var timer = setTimeout(function () { timedOut = true; ctl.abort(); }, 12000);
     return fetch(url, { mode: mode, cache: 'no-store', signal: ctl.signal }).then(function (res) {
-      clearTimeout(timer);
       var r = { probe: label, url: url, mode: mode, ok: true, status: res.status, type: res.type, ms: Date.now() - t0 };
-      if (mode === 'cors') r.contentType = res.headers.get('Content-Type');
-      log('info', 'probe.ok', r);
-      return r;
+      if (res.redirected) { r.redirected = true; r.finalUrl = redactUrl(res.url); r.redirectedOffSite = hostOf(res.url) !== hostOf(url); }
+      var done = function () {
+        clearTimeout(timer);
+        log(r.intercepted ? 'warn' : 'info', r.intercepted ? 'probe.intercepted' : 'probe.ok', r);
+        return r;
+      };
+      if (mode !== 'cors') return done();
+      r.contentType = res.headers.get('Content-Type');
+      // Reading the body tells us whether we got the server's answer or a
+      // filter's page (the server never sends HTML).
+      return res.text().then(function (text) {
+        if (/text\/html/i.test(r.contentType || '') || /^\s*<(!doctype|html|head|body)/i.test(text)) {
+          var m = text.match(BLOCK_RE);
+          r.intercepted = true;
+          r.filterHint = m ? m[0] : null;
+          r.filterLogin = isLoginRedirect(res);
+        }
+        return done();
+      }, done);
     }, function (err) {
       clearTimeout(timer);
       var r = { probe: label, url: url, mode: mode, ok: false, ms: Date.now() - t0, errName: err && err.name, errMessage: err && err.message, timedOut: timedOut };
@@ -484,8 +517,18 @@
 
   function runConnectionTest() {
     log('info', 'test.start', envInfo());
-    var res = { servers: [] };
-    var chain = probe('internet', 'https://www.cloudflare.com/cdn-cgi/trace', 'no-cors').then(function (r) { res.internet = r.ok; });
+    var res = { servers: [], filter: null };
+    function noteFilter(name, login) {
+      res.filter = res.filter || { name: null, login: false };
+      res.filter.name = res.filter.name || name || null;
+      res.filter.login = res.filter.login || !!login;
+    }
+    var chain = probe('internet', 'https://www.cloudflare.com/cdn-cgi/trace', 'no-cors').then(function (r) {
+      res.internet = r.ok;
+      // If even cloudflare.com gets bounced elsewhere, the filter is catching
+      // everything this app sends, not just the plugin server.
+      res.internetIntercepted = !!r.redirectedOffSite;
+    });
     SERVERS.forEach(function (s) {
       chain = chain.then(function () {
         var row = { server: s };
@@ -493,7 +536,11 @@
         return probe('server-reach', s + '/catalog?diag=1', 'no-cors').then(function (r) {
           row.reach = r.ok;
           return probe('server-read', s + '/catalog?diag=1', 'cors');
-        }).then(function (r) { row.read = r.ok; });
+        }).then(function (r) {
+          row.intercepted = !!r.intercepted;
+          row.read = r.ok && !r.intercepted;
+          if (r.intercepted) noteFilter(r.filterHint, r.filterLogin);
+        });
       });
     });
     chain = chain.then(function () {
@@ -504,14 +551,25 @@
         res.download = 'ok'; log('info', 'test.download.ok', { id: free.id, chars: r.code.length, version: r.version });
       }, function (e) {
         res.download = e.code || 'error'; log('error', 'test.download.failed', { id: free.id, error: errInfo(e) });
+        if (e.code === 'filtered' && e.detail) noteFilter(e.detail.filterHint, e.detail.filterLogin);
       });
     });
     return chain.then(function () {
       var anyReach = res.servers.some(function (r) { return r.reach; });
       var anyRead = res.servers.some(function (r) { return r.read; });
+      var hosts = SERVERS.map(hostOf).join(', ');
       var v;
       if (!res.internet && !anyReach) v = 'Can’t reach Cloudflare or the plugin server at all. Either this computer is offline, or the network (or CardMirror itself) blocks outside connections.';
-      else if (!anyReach) v = 'The internet works, but the plugin server address is blocked on this network. School web filters commonly block *.workers.dev. Fix: give the Worker a custom domain and add it to CONFIG.SERVERS.';
+      else if (!anyReach) v = 'The internet works, but the plugin server address is blocked on this network. Ask the network admin to allow ' + hosts + '.';
+      else if (res.filter) {
+        var f = res.filter;
+        v = 'This network’s web filter' + (f.name ? ' (' + f.name + ')' : '') + ' is intercepting requests to the plugin server' +
+          (f.login ? ' and sending them to its sign-in page. CardMirror can’t sign in to the filter the way a browser can, so it never reaches the server.' : ' and answering with its own page.') +
+          (res.internetIntercepted
+            ? ' It intercepted cloudflare.com too, so it is likely catching everything CardMirror sends.'
+            : ' cloudflare.com got through normally, so the filter is treating the plugin server’s address specially.') +
+          ' Ask IT to allow ' + hosts + ' (or exempt CardMirror), or install/update plugins on a different network — installed plugins keep working offline.';
+      }
       else if (!anyRead) v = 'The plugin server is reachable, but its replies are being intercepted (a filter block page, SSL inspection, or a proxy stripping CORS headers).';
       else if (res.download === 'filtered') v = 'The catalog loads, but downloading plugin code is blocked by a web filter (it returned a block page).';
       else if (res.download !== 'ok' && res.download !== 'skipped') v = 'The catalog loads, but downloading plugin code failed (' + res.download + '). Possibly a filter blocking JavaScript downloads; see the log above.';
@@ -858,6 +916,11 @@
         blocked: 'CardMirror blocked this plugin from running.',
         storage: 'Not enough local storage to save this plugin.',
       };
+      if (e.code === 'filtered' && e.detail) {
+        return 'This network’s web filter' + (e.detail.filterHint ? ' (' + e.detail.filterHint + ')' : '') +
+          (e.detail.filterLogin ? ' wants a sign-in before CardMirror can reach the plugin server' : ' is blocking the plugin server') +
+          '. Ask IT to allow it, or install on another network. Diagnostics (bottom-left) has details.';
+      }
       return map[e.code] || e.message || 'Something went wrong.';
     }
 

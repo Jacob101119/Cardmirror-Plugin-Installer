@@ -656,7 +656,7 @@
         '<input id="lic" class="input" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false" value="' + esc(mo.key) + '"' + (mo.loading ? ' disabled' : '') + '>' +
         (mo.error ? '<div class="err">' + icon('alert', 15) + esc(mo.error) + '</div>' : '') +
         '<div class="hint">Don\u2019t have a key? <a href="https://www.google.com" target="_blank" rel="noopener noreferrer">Get one</a>.</div>' +
-        '<div class="hint">Licenses are bound to one device. Need to move it? <a href="mailto:jacob.w.scherrer@gmail.com">Contact</a> the developer for a reset.</div>' +
+        '<div class="hint">Licenses are bound to one device. Need to move it? <a href="mailto:jacobscardmirrorplugins@gmail.com">Contact</a> the developer for a reset.</div>' +
         '<div class="mfoot"><button class="btn" data-act="modal-cancel"' + (mo.loading ? ' disabled' : '') + '>Cancel</button>' +
         '<button class="btn primary" data-act="modal-submit"' + (mo.loading ? ' disabled' : '') + '>' + (mo.loading ? spinner() + 'Activating\u2026' : 'Activate &amp; install') + '</button></div>' +
         '</div></div>';
@@ -686,7 +686,7 @@
         '</div><div class="body">' +
         (state.offline ? '<div class="banner">' + icon('alert', 15) + 'Couldn\u2019t reach the plugin server \u2014 showing the last saved catalog. Installing needs a connection.</div>' : '') +
         body + '</div>' +
-        '<footer><span></span><span class="mid">Contact developer \u2013 <a href="mailto:jacob.w.scherrer@gmail.com">jacob.w.scherrer@gmail.com</a></span>' +
+        '<footer><span></span><span class="mid">Contact developer \u2013 <a href="mailto:jacobscardmirrorplugins@gmail.com">jacobscardmirrorplugins@gmail.com</a></span>' +
         '<button class="tog ' + (fabEnabled() ? 'on' : '') + '" data-act="fab-toggle" role="switch" aria-checked="' + fabEnabled() + '">Floating button<span class="sw"></span></button></footer>' +
         modalView() +
         (state.toast ? '<div class="toast">' + icon('check', 15) + esc(state.toast) + '</div>' : '') +

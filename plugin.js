@@ -46,6 +46,17 @@
       iconColor: '#111111',
       icon: 'search',
     },
+    {
+      id: 'quick-files',
+      name: 'QuickFiles',
+      description: 'Pin files for quick and easy access from within CardMirror.',
+      tier: 'free',
+      version: '1.0.0',
+      author: 'Jacob Scherrer',
+      accent: ['#71717a', '#3f3f46'],
+      iconColor: '#ffffff',
+      icon: 'pin',
+    },
   ];
 
   // ---------------------------------------------------------------------------
@@ -230,6 +241,7 @@
   var ICONS = {
     bolt: '<path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/>',
+    pin: '<path d="M12 17v5"/><path d="M9 3h6l-1 6 3 4H7l3-4-1-6z"/>',
     puzzle: '<path d="M10 4a2 2 0 1 1 4 0v1h3a1 1 0 0 1 1 1v3h1a2 2 0 1 1 0 4h-1v3a1 1 0 0 1-1 1h-3v-1a2 2 0 1 0-4 0v1H7a1 1 0 0 1-1-1v-3H5a2 2 0 1 1 0-4h1V6a1 1 0 0 1 1-1h3V4z"/>',
     download: '<path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14"/>',
     check: '<path d="m5 12 5 5L20 7"/>',

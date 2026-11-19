@@ -708,6 +708,10 @@
     '.modal.wide{width:min(720px,94%)}',
     '.logbox{width:100%;height:300px;resize:vertical;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg2);color:var(--fg);font:11px/1.45 ui-monospace,Menlo,Consolas,monospace;white-space:pre;outline:0}',
     '.verdict{margin:0 0 12px;padding:10px 14px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);font-size:12.5px;line-height:1.5}',
+    '.steps{margin:0 0 12px;padding-left:20px;font-size:13px;line-height:1.6}',
+    '.steps li{margin-bottom:8px}',
+    '.steps .btn{margin:4px 6px 0 0;padding:4px 10px;font-size:12px;text-decoration:none;color:var(--fg)}',
+    'code{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;word-break:break-all}',
     '.toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:9px 16px;border-radius:10px;font-size:13px;box-shadow:var(--shadow);z-index:9;display:flex;gap:8px;align-items:center}',
   ].join('\n');
 
@@ -774,6 +778,7 @@
       checked: {},         // id -> 'ok' | 'error' after a check
       modal: null,         // { plugin, error, loading, key }
       diag: null,          // { running, verdict } while the diagnostics view is open
+      browserDl: null,     // { plugin, reason, error, loading } browser-download fallback
       toast: null,
     };
     log('info', 'panel.open', { version: PM_VERSION });
@@ -822,6 +827,7 @@
       if (e.key === 'Escape') {
         e.stopPropagation();
         if (state.diag) closeDiag();
+        else if (state.browserDl) { if (!state.browserDl.loading) { state.browserDl = null; render(); } }
         else if (state.modal) { state.modal = null; render(); } else close();
       }
     }
@@ -865,6 +871,79 @@
       else fallback();
     }
 
+    // ---- browser-download fallback ----
+    // When CardMirror itself can't reach the server (e.g. a school filter wants
+    // a browser sign-in), the user's web browser may still be let through. We
+    // open the download link there, the user saves the file, and imports it.
+    // Free plugins only: premium downloads need a POST with the license key.
+    function downloadUrl(p) { return serverOrder()[0] + '/plugins/' + encodeURIComponent(p.id) + '/download'; }
+
+    function openBrowserDl(p, e) {
+      var reason = !e ? null
+        : e.code === 'filtered' ? 'blocked by ' + ((e.detail && e.detail.filterHint) || 'a web filter')
+        : e.code === 'timeout' ? 'it timed out' : 'no connection';
+      log('info', 'browserDl.offer', { id: p.id, reason: reason });
+      state.browserDl = { plugin: p, reason: reason, error: null, loading: false, fresh: true };
+      render();
+    }
+
+    function copyText(text, okMsg) {
+      var fail = function () { toast('Couldn’t copy — select the link and copy it manually'); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { toast(okMsg); }, fail);
+      else fail();
+    }
+
+    function importFromFile(file) {
+      var b = state.browserDl; if (!b || !file || b.loading) return;
+      var p = b.plugin;
+      log('info', 'import.start', { id: p.id, fileName: file.name, size: file.size, type: file.type });
+      if (file.size > CONFIG.MAX_BUNDLE_BYTES) { b.error = 'That file is too large to be a plugin.'; render(); return; }
+      b.loading = true; b.error = null; render();
+      var read = file.text ? file.text() : new Promise(function (res, rej) {
+        var fr = new FileReader(); fr.onload = function () { res(String(fr.result)); }; fr.onerror = function () { rej(fr.error); }; fr.readAsText(file);
+      });
+      read.then(function (text) {
+        var code;
+        try { code = validateBundle(text); } catch (ve) {
+          var looksHtml = /^\s*<(!doctype|html|head|body)/i.test(text);
+          var m = looksHtml ? text.match(BLOCK_RE) : null;
+          throw Object.assign(new Error(looksHtml
+            ? 'That file is a web page' + (m ? ' from ' + m[0] : '') + ', not the plugin. The browser was probably blocked too.'
+            : 'That file isn’t a CardMirror plugin. Make sure you saved the page that opened from the download link.'), { code: 'import' });
+        }
+        return applyInstall(p, { code: code, version: p.version }, { source: 'browser-import' });
+      }).then(function (mode) {
+        log('info', 'import.ok', { id: p.id, version: p.version, mode: mode });
+        state.browserDl = null; delete state.latest[p.id]; state.checked[p.id] = 'ok';
+        toast(p.name + (mode === 'restart' ? ' installed — restart CardMirror to activate' : ' installed')); render();
+      }).catch(function (e) {
+        log('error', 'import.failed', { id: p.id, error: errInfo(e) });
+        if (state.browserDl) { state.browserDl.loading = false; state.browserDl.error = e.code === 'import' ? e.message : errorMessage(e); }
+        render();
+      });
+    }
+
+    function browserDlView() {
+      var b = state.browserDl; if (!b) return '';
+      var p = b.plugin, url = downloadUrl(p), dis = b.loading ? ' disabled' : '';
+      return '<div class="modalscrim" data-act="bd-bg"><div class="modal' + (b.fresh ? ' enter' : '') + '">' +
+        '<h2>Get ' + esc(p.name) + ' through your browser</h2>' +
+        '<p>CardMirror couldn’t reach the plugin server' + (b.reason ? ' (' + esc(b.reason) + ')' : '') +
+        '. Your web browser may still be allowed through, so you can download the plugin there and bring the file in here.</p>' +
+        '<ol class="steps">' +
+        '<li>Open the download in your browser:<br>' +
+        '<a class="btn" href="' + esc(url) + '" target="_blank" rel="noopener noreferrer" data-act="bd-open">' + icon('download', 13) + 'Open in browser</a>' +
+        '<button class="btn" data-act="bd-copy">Copy link</button></li>' +
+        '<li>When the code shows up, save it with <b>Ctrl+S</b> (<b>⌘S</b> on a Mac).</li>' +
+        '<li>Choose that saved file below.</li></ol>' +
+        '<div class="hint">If the browser shows a sign-in or “blocked” page instead of code, sign in to your school account there and try again. If it’s still blocked, the school has blocked this site for your account too; ask IT to allow <code>' + esc(hostOf(url)) + '</code>.</div>' +
+        (b.error ? '<div class="err">' + icon('alert', 15) + esc(b.error) + '</div>' : '') +
+        '<input type="file" id="bdfile" style="display:none">' +
+        '<div class="mfoot"><button class="btn" data-act="bd-cancel"' + dis + '>Cancel</button>' +
+        '<button class="btn primary" data-act="bd-pick"' + dis + '>' + (b.loading ? spinner() + 'Installing…' : icon('file', 14) + 'Choose file…') + '</button></div>' +
+        '</div></div>';
+    }
+
     // ---- actions ----
     function startInstall(p) {
       if (p.tier === 'premium') { state.modal = { plugin: p, error: null, loading: false, key: '', fresh: true }; render(); return; }
@@ -875,7 +954,9 @@
         delete state.busy[p.id]; toast(p.name + (mode === 'restart' ? ' installed \u2014 restart CardMirror to activate' : ' installed')); render();
       }).catch(function (e) {
         log('error', 'install.failed', { id: p.id, error: errInfo(e) });
-        delete state.busy[p.id]; toast('Install failed: ' + errorMessage(e)); render();
+        delete state.busy[p.id];
+        if (isConnErr(e)) { openBrowserDl(p, e); return; }
+        toast('Install failed: ' + errorMessage(e)); render();
       });
     }
 
@@ -942,6 +1023,7 @@
       }).catch(function (e) {
         log('error', 'update.failed', { id: p.id, error: errInfo(e) });
         delete state.busy[p.id];
+        if (p.tier !== 'premium' && isConnErr(e)) { openBrowserDl(p, e); return; }
         if (p.tier === 'premium' && (e.code === 'expired' || e.code === 'revoked' || e.code === 'invalid' || e.code === 'bound')) {
           var m = installed(); if (m[p.id]) { m[p.id].license = Object.assign({}, m[p.id].license, { status: e.code }); setInstalled(m); }
         }
@@ -1127,11 +1209,11 @@
         body + '</div>' +
         '<footer><button class="linkbtn" data-act="diag">Diagnostics</button><span class="mid">Contact developer \u2013 <a href="mailto:jacobscardmirrorplugins@gmail.com">jacobscardmirrorplugins@gmail.com</a></span>' +
         '<button class="tog ' + (fabEnabled() ? 'on' : '') + '" data-act="fab-toggle" role="switch" aria-checked="' + fabEnabled() + '">Floating button<span class="sw"></span></button></footer>' +
-        modalView() + diagView() +
+        modalView() + browserDlView() + diagView() +
         (state.toast ? '<div class="toast">' + icon('check', 15) + esc(state.toast) + '</div>' : '') +
         '</div></div>';
 
-      firstRender = false; if (state.modal) state.modal.fresh = false; if (state.diag) state.diag.fresh = false;
+      firstRender = false; if (state.modal) state.modal.fresh = false; if (state.diag) state.diag.fresh = false; if (state.browserDl) state.browserDl.fresh = false;
       var lb = root.querySelector('#logbox'); if (lb) lb.scrollTop = lb.scrollHeight;
       if (focused === 'q') { var el = root.querySelector('#q'); if (el) { el.focus(); el.setSelectionRange(caret, caret); } }
       if (state.modal && !state.modal.loading) { var l = root.querySelector('#lic'); if (l) { l.focus(); l.setSelectionRange(l.value.length, l.value.length); } }
@@ -1144,6 +1226,11 @@
       if (act === 'bg') { if (e.target === t) close(); return; }
       if (act === 'modal-bg') { if (e.target === t && !state.modal.loading) { state.modal = null; render(); } return; }
       if (act === 'diag-bg') { if (e.target === t) closeDiag(); return; }
+      if (act === 'bd-bg') { if (e.target === t && !state.browserDl.loading) { state.browserDl = null; render(); } return; }
+      if (act === 'bd-cancel') { state.browserDl = null; render(); return; }
+      if (act === 'bd-open') { log('info', 'browserDl.open', { id: state.browserDl && state.browserDl.plugin.id }); return; } // link opens itself
+      if (act === 'bd-copy') { if (state.browserDl) copyText(downloadUrl(state.browserDl.plugin), 'Link copied — paste it into your browser'); return; }
+      if (act === 'bd-pick') { var fi = root.querySelector('#bdfile'); if (fi) fi.click(); return; }
       if (act === 'diag') { openDiag(); return; }
       if (act === 'diag-close') { closeDiag(); return; }
       if (act === 'diag-test') { runDiagTest(); return; }
@@ -1162,6 +1249,9 @@
       else if (act === 'uninstall') uninstall(byId(id) || { id: id, name: id });
       else if (act === 'modal-cancel') { state.modal = null; render(); }
       else if (act === 'modal-submit') submitLicense();
+    });
+    root.addEventListener('change', function (e) {
+      if (e.target.id === 'bdfile' && e.target.files && e.target.files[0]) importFromFile(e.target.files[0]);
     });
     root.addEventListener('input', function (e) {
       if (e.target.id === 'q') { state.query = e.target.value; render(); }

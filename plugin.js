@@ -9,16 +9,29 @@
   'use strict';
 
   var PLUGIN_ID = 'plugin-manager';
+  var PM_VERSION = '0.1.8';
   var SPEECHDROP_ICON = 'data:image/png;base64,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';
 
   // ---------------------------------------------------------------------------
   // Config
   // ---------------------------------------------------------------------------
   var CONFIG = {
-    // Phase 2: the catalog + download API on your Cloudflare Worker.
-    LICENSING_WORKER: 'https://cardmirror-licensing.jacob-w-scherrer-cloudfare.workers.dev',
+    // The catalog + download API on your Cloudflare Worker. Servers are tried
+    // in order; the first one that answers is remembered for next time.
+    //
+    // School web filters (GoGuardian, Securly, Lightspeed, Fortinet, ...) very
+    // often block every *.workers.dev address, because that domain is used by
+    // a lot of proxy/"unblocker" sites. The most reliable fix is to give the
+    // Worker a custom domain in Cloudflare (Worker -> Settings -> Domains &
+    // Routes -> Add custom domain, e.g. plugins.yourdomain.com) and put that
+    // URL FIRST in this list. Keep workers.dev as the fallback.
+    SERVERS: [
+      // 'https://plugins.example.com',
+      'https://cardmirror-licensing.jacob-w-scherrer-cloudfare.workers.dev',
+    ],
     MAX_BUNDLE_BYTES: 5 * 1024 * 1024, // same cap CardMirror's own installer uses
     TIMEOUT_MS: 20000,
+    LOG_MAX: 300, // entries kept in the diagnostics log
   };
 
   // Local fallback catalog. In phase 2, backend.getCatalog() fetches this from
@@ -75,32 +88,111 @@
     try { localStorage.setItem(LS + k, JSON.stringify(v)); return true; } catch (e) { return false; }
   }
 
+  // ---------------------------------------------------------------------------
+  // Diagnostics log
+  //
+  // Kept in localStorage (survives restarts) and mirrored to the console. View
+  // and copy it from the panel footer: "Diagnostics". License keys and request
+  // bodies are never logged.
+  // ---------------------------------------------------------------------------
+  var logBuf = lsGet('log', []);
+  if (!Array.isArray(logBuf)) logBuf = [];
+  var logSaveTimer = null;
+  var onLogChange = null; // set while the diagnostics view is open
+
+  function log(level, event, data) {
+    var entry = { t: new Date().toISOString(), level: level, event: event };
+    if (data !== undefined) entry.data = data;
+    logBuf.push(entry);
+    if (logBuf.length > CONFIG.LOG_MAX) logBuf.splice(0, logBuf.length - CONFIG.LOG_MAX);
+    if (!logSaveTimer) logSaveTimer = setTimeout(function () { logSaveTimer = null; lsSet('log', logBuf); }, 250);
+    try {
+      var fn = level === 'error' ? console.error : level === 'warn' ? console.warn : console.info;
+      fn.call(console, '[plugin-manager] ' + event, data === undefined ? '' : data);
+    } catch (e) {}
+    if (onLogChange) { try { onLogChange(); } catch (e) {} }
+  }
+  function clearLog() { logBuf = []; lsSet('log', logBuf); }
+
+  function errInfo(e) {
+    if (!e) return { error: String(e) };
+    var o = { name: e.name, message: e.message, code: e.code };
+    if (e.status) o.status = e.status;
+    if (e.detail) o.detail = e.detail;
+    return o;
+  }
+
+  function safeJson(v) { try { return JSON.stringify(v); } catch (e) { return String(v); } }
+
+  function envInfo() {
+    var evalOk, lsOk, tz;
+    try { evalOk = new Function('return 1')() === 1; } catch (e) { evalOk = false; }
+    try { localStorage.setItem(LS + 'probe', '1'); localStorage.removeItem(LS + 'probe'); lsOk = true; } catch (e) { lsOk = false; }
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) {}
+    var bytes = 0;
+    try { bytes = (localStorage.getItem(LS + 'bundles') || '').length; } catch (e) {}
+    return {
+      managerVersion: PM_VERSION,
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+      online: navigator.onLine,
+      origin: location.origin,
+      protocol: location.protocol,
+      language: navigator.language,
+      timeZone: tz,
+      servers: CONFIG.SERVERS,
+      preferredServer: lsGet('server', null),
+      evalAllowed: evalOk,
+      localStorageWritable: lsOk,
+      savedBundleChars: bytes,
+      hostApiPresent: !!window.__registerCardMirrorPlugin,
+    };
+  }
+
+  function diagText() {
+    var lines = [
+      'CardMirror Plugin Manager diagnostics',
+      'Generated: ' + new Date().toISOString(),
+      'Environment: ' + JSON.stringify(envInfo(), null, 2),
+      '',
+      'Log (' + logBuf.length + ' entries, oldest first):',
+    ];
+    logBuf.forEach(function (e) {
+      lines.push(e.t + ' ' + String(e.level).toUpperCase() + ' ' + e.event + (e.data !== undefined ? ' ' + safeJson(e.data) : ''));
+    });
+    return lines.join('\n');
+  }
+
   var loadedThisSession = (window.__cmPluginManagerLoaded = window.__cmPluginManagerLoaded || {});
 
   // Runs a downloaded bundle. Returns 'live' (registered now) or 'restart'
   // (this id already ran this session, so the new code applies next launch).
   function runBundle(id, code) {
-    if (loadedThisSession[id]) return 'restart';
+    if (loadedThisSession[id]) { log('info', 'bundle.run.deferred', { id: id, reason: 'already ran this session' }); return 'restart'; }
     try {
       new Function(code + '\n//# sourceURL=cardmirror-plugin-' + id + '.js')();
     } catch (e1) {
       if (e1 && /Content Security Policy|unsafe-eval|EvalError/i.test(String(e1.message || e1) + e1.name)) {
         // eval blocked: try a Blob <script> instead
+        log('warn', 'bundle.run.evalBlocked', { id: id, error: errInfo(e1) });
         var url = URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
         return new Promise(function (resolve, reject) {
           var el = document.createElement('script');
           el.src = url;
-          el.onload = function () { el.remove(); URL.revokeObjectURL(url); loadedThisSession[id] = true; resolve('live'); };
+          el.onload = function () { el.remove(); URL.revokeObjectURL(url); loadedThisSession[id] = true; log('info', 'bundle.run.ok', { id: id, via: 'blob-script' }); resolve('live'); };
           el.onerror = function () {
             el.remove(); URL.revokeObjectURL(url);
+            log('error', 'bundle.run.blocked', { id: id, via: 'blob-script' });
             var err = new Error('CardMirror blocked the plugin from running.'); err.code = 'blocked'; reject(err);
           };
           document.head.appendChild(el);
         });
       }
+      log('error', 'bundle.run.threw', { id: id, error: errInfo(e1), stack: String(e1 && e1.stack || '').slice(0, 600) });
       throw e1;
     }
     loadedThisSession[id] = true;
+    log('info', 'bundle.run.ok', { id: id, via: 'eval' });
     return 'live';
   }
 
@@ -109,8 +201,8 @@
     Object.keys(bundles).forEach(function (id) {
       try {
         var r = runBundle(id, bundles[id].code);
-        if (r && r.catch) r.catch(function (e) { console.warn('[plugin-manager] failed to load ' + id, e); });
-      } catch (e) { console.warn('[plugin-manager] failed to load ' + id, e); }
+        if (r && r.catch) r.catch(function (e) { log('warn', 'boot.bundle.failed', { id: id, error: errInfo(e) }); });
+      } catch (e) { log('warn', 'boot.bundle.failed', { id: id, error: errInfo(e) }); }
     });
   }
 
@@ -118,7 +210,17 @@
   // Backend (talks to the Cloudflare Worker)
   // ---------------------------------------------------------------------------
   var ID_RE = /^[a-z0-9][a-z0-9-]*$/;
-  var BASE = CONFIG.LICENSING_WORKER.replace(/\/+$/, '');
+  var SERVERS = CONFIG.SERVERS.map(function (s) { return String(s || '').replace(/\/+$/, ''); }).filter(Boolean);
+
+  // Last server that answered goes first next time.
+  function serverOrder() {
+    var pref = lsGet('server', null);
+    if (pref && SERVERS.indexOf(pref) > 0) return [pref].concat(SERVERS.filter(function (s) { return s !== pref; }));
+    return SERVERS.slice();
+  }
+
+  // Words that show up on school/corporate web-filter block pages.
+  var BLOCK_RE = /goguardian|securly|lightspeed|fortiguard|fortinet|iboss|umbrella|opendns|zscaler|contentkeeper|smoothwall|linewize|netsweeper|blocksi|deledao|cisco|palo ?alto|sophos|barracuda|web ?filter|access denied|has been blocked|site blocked|blocked by|not allowed/i;
 
   function httpError(status, bodyText) {
     var t = String(bodyText || '').toLowerCase();
@@ -133,26 +235,126 @@
     var e = new Error('HTTP ' + status); e.code = code; e.status = status; return e;
   }
 
-  function request(path, opts) {
-    opts = opts || {};
+  function connError(code, detail) {
+    var e = new Error(code); e.code = code; e.detail = detail; return e;
+  }
+  function isConnErr(e) { return !!e && (e.code === 'network' || e.code === 'timeout' || e.code === 'filtered'); }
+
+  // One fetch to one server, with detailed logging of what came back.
+  function fetchOnce(base, path, opts, note) {
+    var url = base + path, method = opts.method || 'GET', t0 = Date.now(), timedOut = false;
     var ctl = new AbortController();
-    var timer = setTimeout(function () { ctl.abort(); }, CONFIG.TIMEOUT_MS);
-    return fetch(BASE + path, Object.assign({ signal: ctl.signal, cache: 'no-store' }, opts)).then(function (res) {
-      clearTimeout(timer);
+    var timer = setTimeout(function () { timedOut = true; ctl.abort(); }, CONFIG.TIMEOUT_MS);
+    var reqCt = opts.headers && opts.headers['Content-Type'];
+    log('info', 'request.start', { method: method, url: url, contentType: reqCt, note: note });
+    return fetch(url, Object.assign({}, opts, { signal: ctl.signal, cache: 'no-store' })).then(function (res) {
       return res.text().then(function (text) {
-        if (!res.ok) throw httpError(res.status, text);
+        clearTimeout(timer);
+        var ct = res.headers.get('Content-Type') || '';
+        var info = {
+          method: method, url: url, status: res.status, ms: Date.now() - t0, type: res.type,
+          contentType: ct, chars: text.length,
+        };
+        if (res.redirected) { info.redirected = true; info.finalUrl = res.url; }
+        // The Worker only ever returns JSON or JavaScript. An HTML page means
+        // something between us and Cloudflare (usually a web filter) answered.
+        var looksHtml = /text\/html/i.test(ct) || /^\s*<(!doctype|html|head|body)/i.test(text);
+        if (looksHtml || !res.ok) info.bodySnippet = text.slice(0, 500);
+        if (looksHtml) {
+          var m = text.match(BLOCK_RE);
+          info.filterHint = m ? m[0] : null;
+          log('error', 'request.blockPage', info);
+          throw connError('filtered', info);
+        }
+        if (!res.ok) {
+          log('error', 'request.httpError', info);
+          var he = httpError(res.status, text); he.detail = info; throw he;
+        }
+        log('info', 'request.ok', info);
         return { res: res, text: text };
+      }, function (err) {
+        clearTimeout(timer);
+        var d = { method: method, url: url, status: res.status, ms: Date.now() - t0, stage: 'reading body', errName: err && err.name, errMessage: err && err.message, timedOut: timedOut };
+        log('error', 'request.failed', d);
+        throw connError(timedOut ? 'timeout' : 'network', d);
       });
-    }, function () {
+    }, function (err) {
       clearTimeout(timer);
-      var e = new Error('network'); e.code = 'network'; throw e;
+      // fetch() rejecting means DNS failure, connection refused/reset, TLS
+      // failure (e.g. school SSL inspection), a CORS rejection, or a timeout.
+      // The browser doesn't say which, so the connection test probes further.
+      var d = {
+        method: method, url: url, ms: Date.now() - t0, stage: 'connecting',
+        errName: err && err.name, errMessage: err && err.message, timedOut: timedOut, online: navigator.onLine,
+      };
+      log('error', 'request.failed', d);
+      throw connError(timedOut ? 'timeout' : 'network', d);
     });
   }
 
+  // JSON POSTs make the browser send a CORS "preflight" OPTIONS request first,
+  // which some school proxies block. text/plain is a "simple" request with no
+  // preflight; Workers' request.json() parses the body either way.
+  function simpleVariant(opts) {
+    var h = opts.headers || {};
+    if (!opts.method || opts.method === 'GET' || !/json/i.test(h['Content-Type'] || '')) return null;
+    return Object.assign({}, opts, { headers: Object.assign({}, h, { 'Content-Type': 'text/plain;charset=UTF-8' }) });
+  }
+
+  // Tries each server in turn. Per server: the request, then one quick retry
+  // for a plain network failure, then (for JSON POSTs) a no-preflight retry.
+  function request(path, opts) {
+    opts = opts || {};
+    var bases = serverOrder(), i = 0, lastErr = null;
+
+    function remember(base) {
+      return function (r) {
+        if (lsGet('server', null) !== base) { lsSet('server', base); log('info', 'server.selected', { server: base }); }
+        return r;
+      };
+    }
+
+    function tryServer(base) {
+      var attempt = fetchOnce(base, path, opts).then(remember(base));
+      attempt = attempt.catch(function (e) {
+        lastErr = e;
+        if (!e || e.code !== 'network') throw e;
+        return delay(700).then(function () { return fetchOnce(base, path, opts, 'retry'); }).then(remember(base));
+      });
+      var simple = simpleVariant(opts);
+      if (simple) {
+        attempt = attempt.catch(function (e) {
+          lastErr = e;
+          if (!isConnErr(e)) throw e;
+          return fetchOnce(base, path, simple, 'retry without CORS preflight').then(remember(base));
+        });
+      }
+      return attempt;
+    }
+
+    function next() {
+      if (i >= bases.length) {
+        log('error', 'request.allServersFailed', { path: path, tried: bases, last: errInfo(lastErr) });
+        return Promise.reject(lastErr || connError('network', { path: path, reason: 'no servers configured' }));
+      }
+      var base = bases[i++];
+      return tryServer(base).catch(function (e) {
+        lastErr = e;
+        if (!isConnErr(e)) throw e; // a real answer from the server (bad key, 500, ...): don't hop servers
+        return next();
+      });
+    }
+    return next();
+  }
+
   function validateBundle(code) {
-    if (typeof code !== 'string' || !code.trim()) throw Object.assign(new Error('Empty download.'), { code: 'server' });
-    if (code.length > CONFIG.MAX_BUNDLE_BYTES) throw Object.assign(new Error('Plugin file is too large.'), { code: 'server' });
-    if (code.indexOf('__registerCardMirrorPlugin') < 0) throw Object.assign(new Error('Download is not a CardMirror plugin.'), { code: 'server' });
+    var bad = function (msg) {
+      log('error', 'bundle.invalid', { reason: msg, chars: typeof code === 'string' ? code.length : typeof code, start: String(code || '').slice(0, 200) });
+      return Object.assign(new Error(msg), { code: 'server' });
+    };
+    if (typeof code !== 'string' || !code.trim()) throw bad('Empty download.');
+    if (code.length > CONFIG.MAX_BUNDLE_BYTES) throw bad('Plugin file is too large.');
+    if (code.indexOf('__registerCardMirrorPlugin') < 0) throw bad('Download is not a CardMirror plugin.');
     return code;
   }
 
@@ -196,8 +398,9 @@
         lsSet('catalog', list);
         return { list: list, offline: false };
       }).catch(function (err) {
-        console.warn('[plugin-manager] catalog load failed:', err && (err.code || err.message), err);
-        return { list: lsGet('catalog', null) || LOCAL_CATALOG, offline: true };
+        var cached = lsGet('catalog', null);
+        log('warn', 'catalog.failed', { error: errInfo(err), fallback: cached ? 'saved catalog' : 'built-in list' });
+        return { list: cached || LOCAL_CATALOG, offline: true, error: err };
       });
     },
 
@@ -252,6 +455,72 @@
   };
 
   function delay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  // ---------------------------------------------------------------------------
+  // Connection test (Diagnostics -> "Run connection test")
+  //
+  // Narrows down *where* things break by comparing a few requests:
+  //  - no-cors to cloudflare.com: is the internet / Cloudflare reachable at all?
+  //  - no-cors to the Worker: can we open a connection to it? (no CORS needed)
+  //  - normal (cors) request to the Worker: can we actually read the answer?
+  //  - a free plugin download: is JavaScript content being filtered?
+  // ---------------------------------------------------------------------------
+  function probe(label, url, mode) {
+    var t0 = Date.now(), ctl = new AbortController(), timedOut = false;
+    var timer = setTimeout(function () { timedOut = true; ctl.abort(); }, 12000);
+    return fetch(url, { mode: mode, cache: 'no-store', signal: ctl.signal }).then(function (res) {
+      clearTimeout(timer);
+      var r = { probe: label, url: url, mode: mode, ok: true, status: res.status, type: res.type, ms: Date.now() - t0 };
+      if (mode === 'cors') r.contentType = res.headers.get('Content-Type');
+      log('info', 'probe.ok', r);
+      return r;
+    }, function (err) {
+      clearTimeout(timer);
+      var r = { probe: label, url: url, mode: mode, ok: false, ms: Date.now() - t0, errName: err && err.name, errMessage: err && err.message, timedOut: timedOut };
+      log('error', 'probe.failed', r);
+      return r;
+    });
+  }
+
+  function runConnectionTest() {
+    log('info', 'test.start', envInfo());
+    var res = { servers: [] };
+    var chain = probe('internet', 'https://www.cloudflare.com/cdn-cgi/trace', 'no-cors').then(function (r) { res.internet = r.ok; });
+    SERVERS.forEach(function (s) {
+      chain = chain.then(function () {
+        var row = { server: s };
+        res.servers.push(row);
+        return probe('server-reach', s + '/catalog?diag=1', 'no-cors').then(function (r) {
+          row.reach = r.ok;
+          return probe('server-read', s + '/catalog?diag=1', 'cors');
+        }).then(function (r) { row.read = r.ok; });
+      });
+    });
+    chain = chain.then(function () {
+      // Real download through the normal path (also exercises block-page detection).
+      var free = (lsGet('catalog', null) || LOCAL_CATALOG).filter(function (p) { return p.tier === 'free'; })[0];
+      if (!free) { res.download = 'skipped'; return; }
+      return backend.installFree(free).then(function (r) {
+        res.download = 'ok'; log('info', 'test.download.ok', { id: free.id, chars: r.code.length, version: r.version });
+      }, function (e) {
+        res.download = e.code || 'error'; log('error', 'test.download.failed', { id: free.id, error: errInfo(e) });
+      });
+    });
+    return chain.then(function () {
+      var anyReach = res.servers.some(function (r) { return r.reach; });
+      var anyRead = res.servers.some(function (r) { return r.read; });
+      var v;
+      if (!res.internet && !anyReach) v = 'Can’t reach Cloudflare or the plugin server at all. Either this computer is offline, or the network (or CardMirror itself) blocks outside connections.';
+      else if (!anyReach) v = 'The internet works, but the plugin server address is blocked on this network. School web filters commonly block *.workers.dev. Fix: give the Worker a custom domain and add it to CONFIG.SERVERS.';
+      else if (!anyRead) v = 'The plugin server is reachable, but its replies are being intercepted (a filter block page, SSL inspection, or a proxy stripping CORS headers).';
+      else if (res.download === 'filtered') v = 'The catalog loads, but downloading plugin code is blocked by a web filter (it returned a block page).';
+      else if (res.download !== 'ok' && res.download !== 'skipped') v = 'The catalog loads, but downloading plugin code failed (' + res.download + '). Possibly a filter blocking JavaScript downloads; see the log above.';
+      else v = 'Everything worked from this computer. If installs still fail, copy this log and send it to the developer.';
+      res.verdict = v;
+      log(/^Everything/.test(v) ? 'info' : 'warn', 'test.verdict', res);
+      return v;
+    });
+  }
 
   // ---------------------------------------------------------------------------
   // Icons
@@ -376,6 +645,11 @@
     '.sw::after{content:"";position:absolute;top:1px;left:1px;width:12px;height:12px;border-radius:50%;background:var(--muted);transition:transform .15s,background .15s}',
     '.tog.on .sw{background:var(--fg)}',
     '.tog.on .sw::after{transform:translateX(12px);background:var(--bg)}',
+    '.linkbtn{justify-self:start;font-size:11px;color:var(--muted);text-decoration:underline}',
+    '.linkbtn:hover{color:var(--fg)}',
+    '.modal.wide{width:min(720px,94%)}',
+    '.logbox{width:100%;height:300px;resize:vertical;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg2);color:var(--fg);font:11px/1.45 ui-monospace,Menlo,Consolas,monospace;white-space:pre;outline:0}',
+    '.verdict{margin:0 0 12px;padding:10px 14px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);font-size:12.5px;line-height:1.5}',
     '.toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:9px 16px;border-radius:10px;font-size:13px;box-shadow:var(--shadow);z-index:9;display:flex;gap:8px;align-items:center}',
   ].join('\n');
 
@@ -441,8 +715,10 @@
       latest: {},          // id -> newest version found by a check
       checked: {},         // id -> 'ok' | 'error' after a check
       modal: null,         // { plugin, error, loading, key }
+      diag: null,          // { running, verdict } while the diagnostics view is open
       toast: null,
     };
+    log('info', 'panel.open', { version: PM_VERSION });
 
     // Small records are kept in both the host's plugin storage and localStorage.
     function sget(k, d) {
@@ -478,6 +754,7 @@
     document.body.appendChild(host);
 
     function close() {
+      onLogChange = null;
       document.removeEventListener('keydown', onKey, true);
       if (host) host.remove();
       host = null;
@@ -486,7 +763,8 @@
     function onKey(e) {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        if (state.modal) { state.modal = null; render(); } else close();
+        if (state.diag) closeDiag();
+        else if (state.modal) { state.modal = null; render(); } else close();
       }
     }
     document.addEventListener('keydown', onKey, true);
@@ -496,13 +774,51 @@
       setTimeout(function () { if (state.toast === msg) { state.toast = null; render(); } }, 2600);
     }
 
+    // ---- diagnostics ----
+    var logRenderTimer = null;
+    function openDiag() {
+      state.diag = { running: false, verdict: null, fresh: true };
+      onLogChange = function () {
+        if (logRenderTimer) return;
+        logRenderTimer = setTimeout(function () { logRenderTimer = null; if (state.diag) render(); }, 150);
+      };
+      render();
+    }
+    function closeDiag() { state.diag = null; onLogChange = null; render(); }
+    function runDiagTest() {
+      if (!state.diag || state.diag.running) return;
+      state.diag.running = true; state.diag.verdict = null; render();
+      runConnectionTest().then(function (v) {
+        if (state.diag) { state.diag.running = false; state.diag.verdict = v; render(); }
+      }, function (e) {
+        log('error', 'test.crashed', errInfo(e));
+        if (state.diag) { state.diag.running = false; state.diag.verdict = 'The test itself failed: ' + (e && e.message); render(); }
+      });
+    }
+    function copyDiag() {
+      var text = diagText();
+      var fallback = function () {
+        var ta = root.querySelector('#logbox');
+        if (ta) { ta.focus(); ta.select(); }
+        var ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+        toast(ok ? 'Log copied' : 'Select the log text and copy it manually');
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { toast('Log copied'); }, fallback);
+      else fallback();
+    }
+
     // ---- actions ----
     function startInstall(p) {
       if (p.tier === 'premium') { state.modal = { plugin: p, error: null, loading: false, key: '', fresh: true }; render(); return; }
       state.busy[p.id] = 'installing'; render();
+      log('info', 'install.start', { id: p.id, tier: 'free', version: p.version });
       backend.installFree(p).then(function (r) { return applyInstall(p, r); }).then(function (mode) {
+        log('info', 'install.ok', { id: p.id, mode: mode });
         delete state.busy[p.id]; toast(p.name + (mode === 'restart' ? ' installed \u2014 restart CardMirror to activate' : ' installed')); render();
-      }).catch(function (e) { delete state.busy[p.id]; toast('Install failed: ' + errorMessage(e)); render(); });
+      }).catch(function (e) {
+        log('error', 'install.failed', { id: p.id, error: errInfo(e) });
+        delete state.busy[p.id]; toast('Install failed: ' + errorMessage(e)); render();
+      });
     }
 
     function submitLicense() {
@@ -512,14 +828,18 @@
       mo.loading = true; mo.error = null; render();
       var p = mo.plugin, dev = deviceId();
       var key = mo.key;
+      log('info', 'install.start', { id: p.id, tier: 'premium', version: p.version, keyChars: key.length });
       backend.activate(p, key, dev).then(function () {
+        log('info', 'license.activated', { id: p.id });
         return backend.installPremium(p, dev, key);
       }).then(function (r) {
         var ls = licenses(); ls[p.id] = key; sset('licenses', ls);
         return applyInstall(p, r, { license: { status: 'active', hint: '\u2022\u2022\u2022\u2022 ' + key.slice(-4) } });
       }).then(function (mode) {
+        log('info', 'install.ok', { id: p.id, mode: mode });
         state.modal = null; toast(p.name + (mode === 'restart' ? ' installed \u2014 restart CardMirror to activate' : ' installed')); render();
       }).catch(function (e) {
+        log('error', 'install.failed', { id: p.id, tier: 'premium', error: errInfo(e) });
         mo.loading = false; mo.error = errorMessage(e); render();
       });
     }
@@ -530,7 +850,9 @@
         expired: 'This license has expired.',
         revoked: 'This license has been revoked.',
         bound: 'This license is already activated on another device.',
-        network: 'Couldn\u2019t reach the plugin server. Check your connection and try again.',
+        network: 'Couldn\u2019t reach the plugin server. Check your connection, or open Diagnostics (bottom-left) to find out why.',
+        timeout: 'The plugin server took too long to answer. Open Diagnostics (bottom-left) for details.',
+        filtered: 'This network seems to be blocking the plugin server (a web filter answered instead). Open Diagnostics (bottom-left) for details.',
         server: 'The plugin server had a problem. Please try again in a moment.',
         rate: 'Too many requests. Please wait a minute and try again.',
         blocked: 'CardMirror blocked this plugin from running.',
@@ -549,10 +871,13 @@
         run = key ? backend.installPremium(p, deviceId(), key)
                   : Promise.reject(Object.assign(new Error('No saved license'), { code: 'invalid' }));
       } else run = backend.installFree(p);
+      log('info', 'update.start', { id: p.id, to: p.version, from: rec.version });
       run.then(function (r) { return applyInstall(p, r); }).then(function (mode) {
+        log('info', 'update.ok', { id: p.id, mode: mode });
         delete state.busy[p.id]; delete state.latest[p.id]; state.checked[p.id] = 'ok';
         toast(p.name + ' updated to ' + p.version + (mode === 'restart' ? ' \u2014 restart CardMirror to apply' : '')); render();
       }).catch(function (e) {
+        log('error', 'update.failed', { id: p.id, error: errInfo(e) });
         delete state.busy[p.id];
         if (p.tier === 'premium' && (e.code === 'expired' || e.code === 'revoked' || e.code === 'invalid' || e.code === 'bound')) {
           var m = installed(); if (m[p.id]) { m[p.id].license = Object.assign({}, m[p.id].license, { status: e.code }); setInstalled(m); }
@@ -584,7 +909,8 @@
         state.latest[id] = r.latest; state.checked[id] = 'ok';
         delete state.checking[id];
         return cmpVer(r.latest, rec.version) > 0;
-      }).catch(function () {
+      }).catch(function (e) {
+        log('warn', 'update.check.failed', { id: id, error: errInfo(e) });
         state.checked[id] = 'error'; delete state.checking[id]; return null;
       });
     }
@@ -695,6 +1021,22 @@
         '</div></div>';
     }
 
+    function diagView() {
+      var d = state.diag; if (!d) return '';
+      return '<div class="modalscrim" data-act="diag-bg"><div class="modal wide' + (d.fresh ? ' enter' : '') + '">' +
+        '<h2>Diagnostics</h2>' +
+        '<p>Run the connection test on the computer where installs fail, then copy the log and send it over. License keys are never recorded.</p>' +
+        (d.verdict ? '<div class="verdict"><b>Result:</b> ' + esc(d.verdict) + '</div>' : '') +
+        '<textarea id="logbox" class="logbox" readonly spellcheck="false">' + esc(diagText()) + '</textarea>' +
+        '<div class="mfoot">' +
+        '<button class="btn danger" data-act="diag-clear"' + (d.running ? ' disabled' : '') + '>' + icon('trash', 14) + 'Clear log</button>' +
+        '<span class="grow"></span>' +
+        '<button class="btn" data-act="diag-copy">Copy log</button>' +
+        '<button class="btn primary" data-act="diag-test"' + (d.running ? ' disabled' : '') + '>' + (d.running ? spinner() + 'Testing…' : icon('refresh', 14) + 'Run connection test') + '</button>' +
+        '<button class="btn" data-act="diag-close">Close</button>' +
+        '</div></div></div>';
+    }
+
     // ---- render ----
     var firstRender = true;
     function render() {
@@ -717,15 +1059,17 @@
             (Object.keys(state.checking).length || !Object.keys(installed()).length ? ' disabled' : '') + '>' +
             (Object.keys(state.checking).length ? spinner() : icon('refresh', 14)) + 'Check all for updates</button>') +
         '</div><div class="body">' +
-        (state.offline ? '<div class="banner">' + icon('alert', 15) + 'Couldn\u2019t reach the plugin server \u2014 showing the last saved catalog. Installing needs a connection.</div>' : '') +
+        (state.offline ? '<div class="banner">' + icon('alert', 15) + '<span>Couldn\u2019t reach the plugin server \u2014 showing the last saved catalog. Installing needs a connection. ' +
+          '<button class="linkbtn" style="color:inherit;font-size:inherit" data-act="diag">Open Diagnostics</button></span></div>' : '') +
         body + '</div>' +
-        '<footer><span></span><span class="mid">Contact developer \u2013 <a href="mailto:jacobscardmirrorplugins@gmail.com">jacobscardmirrorplugins@gmail.com</a></span>' +
+        '<footer><button class="linkbtn" data-act="diag">Diagnostics</button><span class="mid">Contact developer \u2013 <a href="mailto:jacobscardmirrorplugins@gmail.com">jacobscardmirrorplugins@gmail.com</a></span>' +
         '<button class="tog ' + (fabEnabled() ? 'on' : '') + '" data-act="fab-toggle" role="switch" aria-checked="' + fabEnabled() + '">Floating button<span class="sw"></span></button></footer>' +
-        modalView() +
+        modalView() + diagView() +
         (state.toast ? '<div class="toast">' + icon('check', 15) + esc(state.toast) + '</div>' : '') +
         '</div></div>';
 
-      firstRender = false; if (state.modal) state.modal.fresh = false;
+      firstRender = false; if (state.modal) state.modal.fresh = false; if (state.diag) state.diag.fresh = false;
+      var lb = root.querySelector('#logbox'); if (lb) lb.scrollTop = lb.scrollHeight;
       if (focused === 'q') { var el = root.querySelector('#q'); if (el) { el.focus(); el.setSelectionRange(caret, caret); } }
       if (state.modal && !state.modal.loading) { var l = root.querySelector('#lic'); if (l) { l.focus(); l.setSelectionRange(l.value.length, l.value.length); } }
     }
@@ -736,6 +1080,12 @@
       var act = t.getAttribute('data-act'), id = t.getAttribute('data-id');
       if (act === 'bg') { if (e.target === t) close(); return; }
       if (act === 'modal-bg') { if (e.target === t && !state.modal.loading) { state.modal = null; render(); } return; }
+      if (act === 'diag-bg') { if (e.target === t) closeDiag(); return; }
+      if (act === 'diag') { openDiag(); return; }
+      if (act === 'diag-close') { closeDiag(); return; }
+      if (act === 'diag-test') { runDiagTest(); return; }
+      if (act === 'diag-copy') { copyDiag(); return; }
+      if (act === 'diag-clear') { clearLog(); render(); toast('Log cleared'); return; }
       if (act === 'close') close();
       else if (act === 'tab') { state.view = t.getAttribute('data-v'); render(); }
       else if (act === 'install') startInstall(byId(id));
@@ -763,7 +1113,7 @@
 
     render();
     backend.getCatalog().then(function (c) { state.catalog = c.list; state.offline = c.offline; render(); })
-      .catch(function (e) { state.loadError = e.message || 'Unknown error'; render(); });
+      .catch(function (e) { log('error', 'catalog.crashed', errInfo(e)); state.loadError = e.message || 'Unknown error'; render(); });
   }
 
   // ---------------------------------------------------------------------------
@@ -782,6 +1132,11 @@
         run: function (api) { lastApi = api; openManager(api); },
       },
     ],
+  });
+
+  log('info', 'boot', {
+    version: PM_VERSION, registered: !!window.__registerCardMirrorPlugin,
+    online: navigator.onLine, origin: location.origin, userAgent: navigator.userAgent,
   });
 
   // Re-run every plugin installed through the manager (after our own

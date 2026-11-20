@@ -198,6 +198,7 @@
       accent: ['#f59e0b', '#b45309'],
       iconColor: '#ffffff',
       icon: 'quote',
+      openCommand: 'cardmirror-shrink-cites.openPanel', // "Shrink Cites: Open Panel"
     },
     {
       id: 'ribbon-manager',
@@ -209,7 +210,7 @@
       accent: ['#6366f1', '#4338ca'],
       iconColor: '#ffffff',
       icon: 'sliders',
-      openCommand: 'cardmirror-ribbon-manager.openList', // "Ribbon Manager: Choose Buttons…"
+      openCommand: 'cardmirror-ribbon-manager.openPanel', // "Ribbon Manager: Open Panel"
     },
   ];
 

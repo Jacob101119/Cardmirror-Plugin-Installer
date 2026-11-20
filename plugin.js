@@ -51,7 +51,11 @@
     SERVERS: [
       // 'https://plugins.example.com',
       'https://cardmirror-licensing.jacob-w-scherrer-cloudfare.workers.dev',
+      // Backup (Vercel): catalog + free downloads only. Used when Cloudflare
+      // can't be reached or errors. Premium licensing stays on Cloudflare.
+      'https://cardmirror-vercel-downloads.vercel.app',
     ],
+    PRIMARY_RETRY_MS: 15 * 60 * 1000, // after Cloudflare fails, try the backup first for this long
     // Usage ping + feedback (the CardMirror-Plugin-Admin Worker).
     ADMIN_API: 'https://cardmirror-plugin-admin.jacob-w-scherrer-cloudfare.workers.dev',
     USAGE_PING: true,              // anonymous check-in, at most every 12h
@@ -129,6 +133,19 @@
       icon: 'gauge',
       openCommand: 'cardmirror-round-dashboard.open', // "Round Dashboard: Open Dashboard"
     },
+    {
+      id: 'judge-dashboard',
+      name: 'Judge Dashboard',
+      description: 'A dedicated dashboard for judges to organize rounds, manage ballots, and access judge-specific tools.',
+      tier: 'free',
+      version: '1.0.0',
+      author: 'Jacob Scherrer',
+      accent: ['#1e3a8a', '#172554'],
+      iconColor: '#ffffff',
+      icon: 'gavel',
+      // Command that opens it. TODO: confirm once the plugin's final command is set.
+      openCommand: 'cardmirror-judge-dashboard.open',
+    },
   ];
 
   // ---------------------------------------------------------------------------
@@ -200,7 +217,7 @@
       language: navigator.language,
       timeZone: tz,
       servers: CONFIG.SERVERS,
-      preferredServer: lsGet('server', null),
+      primaryDownUntil: lsGet('primaryDownUntil', 0) ? new Date(lsGet('primaryDownUntil', 0)).toISOString() : null,
       evalAllowed: evalOk,
       localStorageWritable: lsOk,
       savedBundleChars: bytes,
@@ -472,9 +489,10 @@
   var SERVERS = CONFIG.SERVERS.map(function (s) { return String(s || '').replace(/\/+$/, ''); }).filter(Boolean);
 
   // Last server that answered goes first next time.
+  // Cloudflare (the first server) is always preferred. If it failed recently,
+  // the backups go first for a while so each request doesn't wait on it.
   function serverOrder() {
-    var pref = lsGet('server', null);
-    if (pref && SERVERS.indexOf(pref) > 0) return [pref].concat(SERVERS.filter(function (s) { return s !== pref; }));
+    if (SERVERS.length > 1 && lsGet('primaryDownUntil', 0) > Date.now()) return SERVERS.slice(1).concat(SERVERS[0]);
     return SERVERS.slice();
   }
 
@@ -580,15 +598,32 @@
 
   // Tries each server in turn. Per server: the request, then one quick retry
   // for a plain network failure, then (for JSON POSTs) a no-preflight retry.
+  // Worth trying another server for: no connection, a filter page, a server
+  // error, or (for GETs) a server that doesn't know this plugin.
+  function shouldTryNextServer(e, opts) {
+    if (isConnErr(e)) return true;
+    if (e && e.status >= 500) return true;
+    return !!e && e.status === 404 && (!opts.method || opts.method === 'GET');
+  }
+
+  // opts.primaryOnly: licensing calls, which only Cloudflare can answer.
   function request(path, opts) {
     opts = opts || {};
-    var bases = serverOrder(), i = 0, lastErr = null;
+    var bases = opts.primaryOnly ? SERVERS.slice(0, 1) : serverOrder(), i = 0, lastErr = null;
+    var fetchOpts = Object.assign({}, opts); delete fetchOpts.primaryOnly;
+    opts = fetchOpts;
 
     function remember(base) {
       return function (r) {
-        if (lsGet('server', null) !== base) { lsSet('server', base); log('info', 'server.selected', { server: base }); }
+        if (base === SERVERS[0]) { if (lsGet('primaryDownUntil', 0)) { lsSet('primaryDownUntil', 0); log('info', 'server.primaryBack'); } }
+        else log('info', 'server.usedBackup', { server: base, path: path });
         return r;
       };
+    }
+    function notePrimaryDown(base, e) {
+      if (base !== SERVERS[0] || SERVERS.length < 2) return;
+      lsSet('primaryDownUntil', Date.now() + CONFIG.PRIMARY_RETRY_MS);
+      log('warn', 'server.primaryDown', { error: errInfo(e), backupFirstForMin: Math.round(CONFIG.PRIMARY_RETRY_MS / 60000) });
     }
 
     function tryServer(base) {
@@ -617,7 +652,8 @@
       var base = bases[i++];
       return tryServer(base).catch(function (e) {
         lastErr = e;
-        if (!isConnErr(e)) throw e; // a real answer from the server (bad key, 500, ...): don't hop servers
+        if (!shouldTryNextServer(e, opts)) throw e; // a real answer (bad key, revoked, ...): don't hop servers
+        if (isConnErr(e) || e.status >= 500) notePrimaryDown(base, e);
         return next();
       });
     }
@@ -703,12 +739,14 @@
     activate: function (plugin, licenseKey, deviceId) {
       if (!licenseKey) return Promise.reject(Object.assign(new Error('Enter a license key.'), { code: 'invalid' }));
       return request('/activate', {
+        primaryOnly: true,
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: backend._body(plugin, licenseKey, deviceId),
       });
     },
     installPremium: function (plugin, deviceId, licenseKey) {
       return request('/download', {
+        primaryOnly: true,
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: backend._body(plugin, licenseKey, deviceId),
       }).then(function (r) {
@@ -942,7 +980,9 @@
       var anyRead = res.servers.some(function (r) { return r.read; });
       var hosts = SERVERS.map(hostOf).join(', ');
       var v;
-      if (!res.internet && !anyReach) v = 'Can’t reach Cloudflare or the plugin server at all. Either this computer is offline, or the network (or CardMirror itself) blocks outside connections.';
+      var primaryRow = res.servers[0] || {}, backupOk = res.servers.slice(1).some(function (r) { return r.read; });
+      if (res.download === 'ok' && !primaryRow.read && backupOk) v = 'The main plugin server (Cloudflare) is blocked or failing on this network, but the backup server works, so free plugins can still be installed and updated. Paid plugins need the main server.';
+      else if (!res.internet && !anyReach) v = 'Can’t reach Cloudflare or the plugin server at all. Either this computer is offline, or the network (or CardMirror itself) blocks outside connections.';
       else if (!anyReach) v = 'The internet works, but the plugin server address is blocked on this network. Ask the network admin to allow ' + hosts + '.';
       else if (res.filter) {
         var f = res.filter;
@@ -973,6 +1013,7 @@
     file: '<path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7l-4-4zM14 3v4h4"/>',
     star: '<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3z"/>',
     pin: '<path d="M12 17v5"/><path d="M9 3h6l-1 6 3 4H7l3-4-1-6z"/>',
+    gavel: '<path d="m14.5 12.5-8 8a2.12 2.12 0 1 1-3-3l8-8"/><path d="m16 16 6-6"/><path d="m8 8 6-6"/><path d="m9 7 8 8"/><path d="m21 11-8-8"/>',
     gauge: '<path d="M5.64 20.36A9 9 0 1 1 20.65 11.52" stroke-width="2.8"/><path d="M20.65 11.52A9 9 0 0 1 18.36 20.36" stroke-width="2.8" opacity=".35"/><path d="M12 14l6.6-1.9" stroke-width="1.8"/><circle cx="12" cy="14" r="2.1" fill="currentColor" stroke="none"/>',
     brush: '<path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/>',
     puzzle: '<path d="M10 4a2 2 0 1 1 4 0v1h3a1 1 0 0 1 1 1v3h1a2 2 0 1 1 0 4h-1v3a1 1 0 0 1-1 1h-3v-1a2 2 0 1 0-4 0v1H7a1 1 0 0 1-1-1v-3H5a2 2 0 1 1 0-4h1V6a1 1 0 0 1 1-1h3V4z"/>',

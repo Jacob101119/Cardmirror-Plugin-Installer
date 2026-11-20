@@ -207,6 +207,7 @@
       accent: ['#6366f1', '#4338ca'],
       iconColor: '#ffffff',
       icon: 'sliders',
+      openCommand: 'cardmirror-ribbon-manager.openList', // "Ribbon Manager: Choose Buttons…"
     },
   ];
 

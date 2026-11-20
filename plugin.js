@@ -198,7 +198,7 @@
       accent: ['#f59e0b', '#b45309'],
       iconColor: '#ffffff',
       icon: 'quote',
-      openCommand: 'cardmirror-shrink-cites.openPanel', // "Shrink Cites: Open Panel"
+      openCommand: 'cardmirror-shrink-cites.open-panel', // "Shrink Cites: Open Panel"
     },
     {
       id: 'ribbon-manager',
@@ -1158,7 +1158,76 @@
     });
   }
 
+  // Preferred: update the manager the same way Settings -> Plugins -> "Check
+  // for updates" does, through CardMirror's own installer. That replaces the
+  // installed files, so Settings shows the new version and nothing else is
+  // needed. Resolves true when the installed copy is now current (updated, or
+  // already up to date); false when it can't be used (e.g. the manager was
+  // loaded from a file, not installed from GitHub) so the copy-in-storage
+  // path below runs instead.
+  var INSTALLER_REPO_RE = /(^|\/)cardmirror-plugin-installer$/i;
+  function hostSelfUpdate() {
+    var api = window.electronAPI;
+    if (!api || typeof api.pluginList !== 'function' || typeof api.pluginCheckUpdate !== 'function' ||
+        typeof api.pluginInstallInspect !== 'function' || typeof api.pluginInstallCommit !== 'function') {
+      log('info', 'selfUpdate.host.unavailable', { reason: 'CardMirror plugin installer API not present' });
+      return Promise.resolve(false);
+    }
+    return Promise.resolve(api.pluginList()).then(function (list) {
+      var me = (Array.isArray(list) ? list : []).filter(function (p) {
+        return p && (INSTALLER_REPO_RE.test(String(p.repo || '')) || p.id === 'plugin-installer');
+      })[0];
+      if (!me || !me.repo) {
+        log('info', 'selfUpdate.host.notInstalled', { reason: me ? 'installed without a GitHub repo' : 'not in CardMirror\u2019s plugin list' });
+        return false;
+      }
+      return Promise.resolve(api.pluginCheckUpdate(me.id, me.repo)).then(function (res) {
+        if (!res || !res.ok) {
+          log('warn', 'selfUpdate.host.checkFailed', { installed: me.version, error: res && res.error });
+          return false;
+        }
+        if (!res.hasUpdate) {
+          log('info', 'selfUpdate.host.current', { installed: res.current, latest: res.latest, running: PM_VERSION });
+          return true;
+        }
+        if (res.latest === lsGet('selfBad', null)) {
+          log('warn', 'selfUpdate.skipped', { version: res.latest, reason: 'this version failed to start before; waiting for a newer one' });
+          return true;
+        }
+        log('info', 'selfUpdate.host.downloading', { from: res.current, to: res.latest });
+        return Promise.resolve(api.pluginInstallInspect(me.repo)).then(function (ins) {
+          if (!ins || !ins.ok) throw new Error((ins && ins.error) || 'inspect failed');
+          if (ins.plugin && ins.plugin.id && ins.plugin.id !== me.id) {
+            if (typeof api.pluginInstallDiscard === 'function') api.pluginInstallDiscard(ins.pending);
+            throw new Error('release id ' + ins.plugin.id + ' does not match installed id ' + me.id);
+          }
+          return api.pluginInstallCommit(ins.pending);
+        }).then(function (r) {
+          if (!r || !r.ok) throw new Error((r && r.error) || 'install failed');
+          log('info', 'selfUpdate.host.installed', { from: res.current, to: res.latest, note: 'runs on next launch; Settings now shows the new version' });
+          // The installed files are now the newest; a copy kept in storage
+          // from the older update path isn't needed any more.
+          var saved = lsGet('self', null);
+          if (saved && cmpVer(saved.version, res.latest) <= 0) { try { localStorage.removeItem(SELF_KEY); } catch (e) {} }
+          return true;
+        }).catch(function (e) {
+          log('warn', 'selfUpdate.host.failed', { from: res.current, to: res.latest, error: errInfo(e) });
+          return false;
+        });
+      });
+    }).catch(function (e) {
+      log('warn', 'selfUpdate.host.failed', errInfo(e));
+      return false;
+    });
+  }
+
   function selfUpdateCheck() {
+    return hostSelfUpdate().then(function (done) {
+      return done ? undefined : storageSelfUpdate();
+    }, storageSelfUpdate);
+  }
+
+  function storageSelfUpdate() {
     if (!CONFIG.SELF_UPDATE || !CONFIG.SELF_UPDATE.manifest) return Promise.resolve();
     var bad = lsGet('selfBad', null);
     var i = 0;
@@ -1292,6 +1361,7 @@
     'header{display:flex;align-items:center;gap:12px;padding:16px 20px 0}',
     '.logo{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,#3f3f46,#71717a)}',
     'h1{font-size:24px;margin:0;font-weight:700;letter-spacing:-.02em}',
+    'h1 .ver{margin-left:8px;font-size:12px;font-weight:500;letter-spacing:0;color:var(--muted);vertical-align:middle}',
     '.sub{font-size:12.5px;color:var(--muted);margin-top:2px}',
     '.grow{flex:1}',
     'button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}',
@@ -2046,7 +2116,7 @@
       root.innerHTML = '<style>' + CSS + '</style>' +
         '<div class="scrim" data-act="bg"><div class="win' + (firstRender ? ' enter' : '') + '" role="dialog" aria-label="Plugin Manager">' +
         '<header>' +
-        '<div><h1>Plugin Manager</h1><div class="sub">Browse, install and manage CardMirror plugins</div></div>' +
+        '<div><h1>Plugin Manager<span class="ver">v' + esc(PM_VERSION) + '</span></h1><div class="sub">Browse, install and manage CardMirror plugins</div></div>' +
         '<span class="grow"></span><button class="iconbtn" data-act="close" aria-label="Close">' + icon('x', 18) + '</button></header>' +
         bar +
         '<div class="body">' +

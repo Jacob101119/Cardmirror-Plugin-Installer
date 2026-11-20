@@ -14,18 +14,29 @@
   // Self-update: if a newer copy of this manager was downloaded on an earlier
   // launch (see selfUpdateCheck), run that copy instead of this file. The
   // flag stops the newer copy from doing the same check again.
-  var SELF_KEY = 'cm-plugin-manager:self';
+  // A copy that fails to start (or never confirms it started, see
+  // confirmSelfBoot) is dropped after SELF_MAX_BOOTS tries, its version is
+  // remembered as bad so it isn't downloaded again, and this file runs.
+  var SELF_KEY = 'cm-plugin-manager:self', SELF_BAD_KEY = 'cm-plugin-manager:selfBad', SELF_MAX_BOOTS = 3;
   if (!window.__cmPluginManagerSelfBoot) {
     var selfCopy = null;
+    var dropSelf = function (version) {
+      try { localStorage.removeItem(SELF_KEY); localStorage.setItem(SELF_BAD_KEY, JSON.stringify(version)); } catch (e) {}
+    };
     try { selfCopy = JSON.parse(localStorage.getItem(SELF_KEY) || 'null'); } catch (e) {}
-    if (selfCopy && typeof selfCopy.code === 'string' && cmpVer(selfCopy.version, PM_VERSION) > 0) {
+    if (selfCopy && typeof selfCopy.code === 'string' && cmpVer(selfCopy.version, PM_VERSION) > 0 && (selfCopy.boots || 0) >= SELF_MAX_BOOTS) {
+      dropSelf(selfCopy.version);
+      window.__cmPluginManagerSelfBoot = { from: PM_VERSION, to: selfCopy.version, failed: 'did not start after ' + SELF_MAX_BOOTS + ' tries' };
+    } else if (selfCopy && typeof selfCopy.code === 'string' && cmpVer(selfCopy.version, PM_VERSION) > 0) {
+      selfCopy.boots = (selfCopy.boots || 0) + 1;
+      try { localStorage.setItem(SELF_KEY, JSON.stringify(selfCopy)); } catch (e) {}
       window.__cmPluginManagerSelfBoot = { from: PM_VERSION, to: selfCopy.version };
       try {
         new Function(selfCopy.code + '\n//# sourceURL=cardmirror-plugin-manager-' + selfCopy.version + '.js')();
         return; // the newer copy is now running; skip the rest of this file
       } catch (e) {
         // Broken download: forget it and carry on with this file's version.
-        try { localStorage.removeItem(SELF_KEY); } catch (e2) {}
+        dropSelf(selfCopy.version);
         window.__cmPluginManagerSelfBoot = { from: PM_VERSION, to: selfCopy.version, failed: String(e && e.message || e) };
       }
     } else if (selfCopy) {
@@ -48,14 +59,29 @@
     // Worker a custom domain in Cloudflare (Worker -> Settings -> Domains &
     // Routes -> Add custom domain, e.g. plugins.yourdomain.com) and put that
     // URL FIRST in this list. Keep workers.dev as the fallback.
-    SERVERS: [
-      // 'https://plugins.example.com',
-      'https://cardmirror-licensing.jacob-w-scherrer-cloudfare.workers.dev',
-      // Backup (Vercel): catalog + free downloads only. Used when Cloudflare
-      // can't be reached or errors. Premium licensing stays on Cloudflare.
-      'https://cardmirror-vercel-downloads.vercel.app',
+    //
+    // Download providers, in order of preference. A new computer starts with
+    // the first one; whichever answers is remembered and used first from then
+    // on (see providerOrder). Licensing (codes, paid downloads) only works on
+    // the provider marked licensing: true.
+    //   type 'worker':      REST paths (/catalog, /plugins/<id>/download, ...)
+    //   type 'apps-script': ?action=catalog / ?action=download&id=<id>;
+    //                       catalog + free downloads only, errors are HTTP 200
+    //                       with { error }, and it has daily quotas.
+    PROVIDERS: [
+      { id: 'cloudflare', name: 'Cloudflare', type: 'worker', licensing: true,
+        base: 'https://cardmirror-licensing.jacob-w-scherrer-cloudfare.workers.dev' },
+      { id: 'vercel', name: 'Vercel', type: 'worker',
+        base: 'https://cardmirror-vercel-downloads.vercel.app' },
+      { id: 'apps-script', name: 'Google Apps Script', type: 'apps-script',
+        base: 'https://script.google.com/macros/s/AKfycbyc7MVjwoykoCim1hN-wMTHWABtmLn0LggEFTN_Kt2PRn9VnjxyIa7g4vx3t6usDT1W1g/exec' },
     ],
-    PRIMARY_RETRY_MS: 15 * 60 * 1000,
+    // While a backup is the remembered provider, Cloudflare gets one try first
+    // at most this often, so a network that unblocks it moves back to it.
+    PREFERRED_RECHECK_MS: 24 * 60 * 60 * 1000,
+    // After Apps Script reports a quota/rate limit, skip it for this long.
+    APPS_SCRIPT_QUOTA_COOLDOWN_MS: 30 * 60 * 1000,
+    APPS_SCRIPT_BUSY_COOLDOWN_MS: 60 * 1000,
     // One code unlocks the whole store. Where people buy it:
     STORE_URL: 'https://cardmirror-plugin-storefront.pages.dev/#plugins', // where people buy a code
     STORE_PASS_ID: 'all-access', // product_id the licensing Worker uses for the store code // after Cloudflare fails, try the backup first for this long
@@ -160,6 +186,28 @@
       icon: 'checklist',
       openCommand: 'cardmirror-todo.openList', // "TODO: Open List"
     },
+    {
+      id: 'shrink-cites',
+      name: 'Shrink Cites',
+      description: 'Shrink cite paragraphs to keep cards clean and readable.',
+      tier: 'free',
+      version: '1.0.0',
+      author: 'Jacob Scherrer',
+      accent: ['#f59e0b', '#b45309'],
+      iconColor: '#ffffff',
+      icon: 'quote',
+    },
+    {
+      id: 'ribbon-manager',
+      name: 'Ribbon Manager',
+      description: 'Customize your CardMirror ribbon by choosing exactly which buttons appear and which stay hidden.',
+      tier: 'free',
+      version: '1.0.0',
+      author: 'Jacob Scherrer',
+      accent: ['#6366f1', '#4338ca'],
+      iconColor: '#ffffff',
+      icon: 'sliders',
+    },
   ];
 
   // ---------------------------------------------------------------------------
@@ -181,14 +229,13 @@
   // ----------------------------------------------------------------------------
   // Diagnostics log
   //
-  // Kept in localStorage (survives restarts) and mirrored to the console. View
-  // and copy it from the panel footer: "Diagnostics". License keys and request
-  // bodies are never logged.
+  // Kept in localStorage (survives restarts) and mirrored to the console.
+  // Users never see it; it's attached to feedback only when they tick
+  // "Include a log". License keys and request bodies are never logged.
   // ---------------------------------------------------------------------------
   var logBuf = lsGet('log', []);
   if (!Array.isArray(logBuf)) logBuf = [];
   var logSaveTimer = null;
-  var onLogChange = null; // set while the diagnostics view is open
 
   function log(level, event, data) {
     var entry = { t: new Date().toISOString(), level: level, event: event };
@@ -200,9 +247,7 @@
       var fn = level === 'error' ? console.error : level === 'warn' ? console.warn : console.info;
       fn.call(console, '[plugin-manager] ' + event, data === undefined ? '' : data);
     } catch (e) {}
-    if (onLogChange) { try { onLogChange(); } catch (e) {} }
   }
-  function clearLog() { logBuf = []; lsSet('log', logBuf); }
 
   function errInfo(e) {
     if (!e) return { error: String(e) };
@@ -230,8 +275,8 @@
       protocol: location.protocol,
       language: navigator.language,
       timeZone: tz,
-      servers: CONFIG.SERVERS,
-      primaryDownUntil: lsGet('primaryDownUntil', 0) ? new Date(lsGet('primaryDownUntil', 0)).toISOString() : null,
+      providers: CONFIG.PROVIDERS.map(function (p) { return p.id + ' ' + p.base; }),
+      providerState: lsGet('providers', null),
       evalAllowed: evalOk,
       localStorageWritable: lsOk,
       savedBundleChars: bytes,
@@ -500,16 +545,6 @@
   // Backend (talks to the Cloudflare Worker)
   // ---------------------------------------------------------------------------
   var ID_RE = /^[a-z0-9][a-z0-9-]*$/;
-  var SERVERS = CONFIG.SERVERS.map(function (s) { return String(s || '').replace(/\/+$/, ''); }).filter(Boolean);
-
-  // Last server that answered goes first next time.
-  // Cloudflare (the first server) is always preferred. If it failed recently,
-  // the backups go first for a while so each request doesn't wait on it.
-  function serverOrder() {
-    if (SERVERS.length > 1 && lsGet('primaryDownUntil', 0) > Date.now()) return SERVERS.slice(1).concat(SERVERS[0]);
-    return SERVERS.slice();
-  }
-
   function hostOf(u) { try { return new URL(u).host; } catch (e) { return ''; } }
 
   // Filter redirects carry device/session tokens in the query string; keep only
@@ -549,26 +584,127 @@
   }
   function isConnErr(e) { return !!e && (e.code === 'network' || e.code === 'timeout' || e.code === 'filtered'); }
 
-  // One fetch to one server, with detailed logging of what came back.
-  function fetchOnce(base, path, opts, note) {
-    var url = base + path, method = opts.method || 'GET', t0 = Date.now(), timedOut = false;
+  // ----- Download providers -----------------------------------------------
+  // Cloudflare -> Vercel -> Google Apps Script by default. The last one that
+  // worked on this computer is tried first next time, so a network that
+  // blocks Cloudflare doesn't wait on it for every request.
+  var PROVIDERS = CONFIG.PROVIDERS.map(function (p) {
+    return Object.assign({}, p, { base: String(p.base || '').replace(/\/+$/, '') });
+  }).filter(function (p) { return p.base; });
+  var DEFAULT_PROVIDER = PROVIDERS[0];
+  var LICENSING_PROVIDER = PROVIDERS.filter(function (p) { return p.licensing; })[0] || DEFAULT_PROVIDER;
+  function providerById(id) { return PROVIDERS.filter(function (p) { return p.id === id; })[0] || null; }
+
+  // Saved per computer (localStorage 'providers'):
+  //   preferred      id of the last provider that answered (none = new computer)
+  //   failedAt       { id: time of its last connection/server failure }
+  //   cooldownUntil  { id: skip until } after an Apps Script quota/rate limit
+  function providerState() {
+    var st = lsGet('providers', null);
+    if (!st || typeof st !== 'object') st = {};
+    if (!st.failedAt || typeof st.failedAt !== 'object') st.failedAt = {};
+    if (!st.cooldownUntil || typeof st.cooldownUntil !== 'object') st.cooldownUntil = {};
+    if (st.preferred && !providerById(st.preferred)) st.preferred = null;
+    return st;
+  }
+  function saveProviderState(st) { lsSet('providers', st); }
+  try { localStorage.removeItem(LS + 'primaryDownUntil'); } catch (e) {} // replaced by 'providers'
+
+  // Remembered provider first, then the rest in default order. While a backup
+  // is remembered, the default (Cloudflare) still gets one try first at most
+  // once per PREFERRED_RECHECK_MS, so the computer moves back when it can.
+  function providerOrder() {
+    var st = providerState();
+    var pref = providerById(st.preferred) || DEFAULT_PROVIDER;
+    var order = [pref].concat(PROVIDERS.filter(function (p) { return p !== pref; }));
+    if (pref !== DEFAULT_PROVIDER && Date.now() - (st.failedAt[DEFAULT_PROVIDER.id] || 0) > CONFIG.PREFERRED_RECHECK_MS) {
+      order = [DEFAULT_PROVIDER].concat(order.filter(function (p) { return p !== DEFAULT_PROVIDER; }));
+    }
+    return order;
+  }
+
+  // The URL for a REST-style path on a provider, or null if it can't serve it.
+  // Apps Script has no path routing and only serves the catalog, free
+  // downloads and the manager's own updates.
+  function providerUrl(p, path) {
+    if (p.type !== 'apps-script') return p.base + path;
+    var bare = path.split('?')[0], m;
+    if (bare === '/catalog') return p.base + '?action=catalog'; // no fresh=1: protects its quota (5-min cache there)
+    if ((m = bare.match(/^\/plugins\/([^/?]+)\/download$/))) return p.base + '?action=download&id=' + m[1];
+    if (bare === '/manager') return p.base + '?action=manager';
+    return null;
+  }
+
+  // Apps Script answers HTTP 200 even for errors: JSON { error } from the
+  // script, or an HTML page when Google refuses to run it (quota, too many
+  // at once, execution time). Returns an Error to throw, or null if fine.
+  function appsScriptError(text, looksHtml) {
+    var head = String(text || '').slice(0, 5000), kind = null, j = null;
+    if (/^\s*\{/.test(head)) { try { j = JSON.parse(text); } catch (e) {} }
+    if (j && typeof j.error === 'string') kind = j.error;
+    else if (looksHtml) {
+      if (/too many simultaneous invocations/i.test(head)) kind = 'busy';
+      else if (/service invoked too many times|quota|bandwidth|rate limit|too many requests/i.test(head)) kind = 'quota';
+      else if (/exceeded maximum execution time/i.test(head)) kind = 'timeout';
+    }
+    if (!kind) return null;
+    var e;
+    if (kind === 'quota' || kind === 'busy') {
+      e = new Error(kind === 'quota' ? 'Apps Script quota reached' : 'Apps Script busy (too many requests at once)');
+      e.code = 'rate'; e.status = 429; e.providerLimit = kind;
+      e.cooldownMs = kind === 'quota' ? CONFIG.APPS_SCRIPT_QUOTA_COOLDOWN_MS : CONFIG.APPS_SCRIPT_BUSY_COOLDOWN_MS;
+    } else if (kind === 'timeout') {
+      e = connError('timeout', { appsScript: 'execution time exceeded' });
+    } else if (kind === 'not_found' || kind === 'license_required') {
+      e = new Error('Apps Script: ' + kind); e.code = 'invalid'; e.status = 404; // GET 404 -> next provider
+    } else {
+      e = new Error('Apps Script: ' + kind); e.code = 'server'; e.status = 502;
+    }
+    e.appsScriptError = kind;
+    return e;
+  }
+
+  // Apps Script limits simultaneous runs, so its requests go one at a time.
+  var appsScriptQueue = Promise.resolve(), appsScriptPending = 0;
+  function appsScriptSerial(fn, info) {
+    if (appsScriptPending) log('info', 'provider.queued', Object.assign({ provider: 'apps-script', ahead: appsScriptPending }, info));
+    appsScriptPending++;
+    var run = appsScriptQueue.then(fn, fn);
+    var settle = function () { appsScriptPending--; };
+    appsScriptQueue = run.then(settle, settle);
+    return run;
+  }
+
+  // One fetch to one provider, with detailed logging of what came back.
+  function fetchOnce(provider, path, opts, note) {
+    var url = providerUrl(provider, path), method = opts.method || 'GET', t0 = Date.now(), timedOut = false;
     var ctl = new AbortController();
     var timer = setTimeout(function () { timedOut = true; ctl.abort(); }, CONFIG.TIMEOUT_MS);
     var reqCt = opts.headers && opts.headers['Content-Type'];
-    log('info', 'request.start', { method: method, url: url, contentType: reqCt, note: note });
+    log('info', 'request.start', { provider: provider.id, method: method, url: url, contentType: reqCt, note: note });
     return fetch(url, Object.assign({}, opts, { signal: ctl.signal, cache: 'no-store' })).then(function (res) {
       return res.text().then(function (text) {
         clearTimeout(timer);
         var ct = res.headers.get('Content-Type') || '';
         var info = {
-          method: method, url: url, status: res.status, ms: Date.now() - t0, type: res.type,
+          provider: provider.id, method: method, url: url, status: res.status, ms: Date.now() - t0, type: res.type,
           contentType: ct, chars: text.length,
         };
         if (res.redirected) { info.redirected = true; info.finalUrl = redactUrl(res.url); }
-        // The Worker only ever returns JSON or JavaScript. An HTML page means
-        // something between us and Cloudflare (usually a web filter) answered.
+        // The servers only ever return JSON or JavaScript. An HTML page means
+        // something between us and them (usually a web filter) answered,
+        // or, for Apps Script, Google refusing to run the script.
         var looksHtml = /text\/html/i.test(ct) || /^\s*<(!doctype|html|head|body)/i.test(text);
         if (looksHtml || !res.ok) info.bodySnippet = text.slice(0, looksHtml ? 300 : 500);
+        if (provider.type === 'apps-script') {
+          var ge = appsScriptError(text, looksHtml);
+          if (ge) {
+            info.appsScriptError = ge.appsScriptError;
+            if (!info.bodySnippet) info.bodySnippet = text.slice(0, 200);
+            log(ge.providerLimit ? 'warn' : 'error', ge.providerLimit ? 'provider.rateLimited' : 'request.appsScriptError', info);
+            ge.detail = info; throw ge;
+          }
+        }
         if (looksHtml) {
           var m = text.match(BLOCK_RE);
           info.filterHint = m ? m[0] : null;
@@ -584,22 +720,25 @@
         return { res: res, text: text };
       }, function (err) {
         clearTimeout(timer);
-        var d = { method: method, url: url, status: res.status, ms: Date.now() - t0, stage: 'reading body', errName: err && err.name, errMessage: err && err.message, timedOut: timedOut };
-        log('error', 'request.failed', d);
+        var d = { provider: provider.id, method: method, url: url, status: res.status, ms: Date.now() - t0, stage: 'reading body', errName: err && err.name, errMessage: err && err.message, timedOut: timedOut };
+        log('error', timedOut ? 'request.timeout' : 'request.failed', d);
         throw connError(timedOut ? 'timeout' : 'network', d);
       });
     }, function (err) {
       clearTimeout(timer);
       // fetch() rejecting means DNS failure, connection refused/reset, TLS
       // failure (e.g. school SSL inspection), a CORS rejection, or a timeout.
-      // The browser doesn't say which, so the connection test probes further.
       var d = {
-        method: method, url: url, ms: Date.now() - t0, stage: 'connecting',
+        provider: provider.id, method: method, url: url, ms: Date.now() - t0, stage: 'connecting',
         errName: err && err.name, errMessage: err && err.message, timedOut: timedOut, online: navigator.onLine,
       };
-      log('error', 'request.failed', d);
+      log('error', timedOut ? 'request.timeout' : 'request.failed', d);
       throw connError(timedOut ? 'timeout' : 'network', d);
     });
+  }
+  function fetchVia(provider, path, opts, note) {
+    if (provider.type !== 'apps-script') return fetchOnce(provider, path, opts, note);
+    return appsScriptSerial(function () { return fetchOnce(provider, path, opts, note); }, { path: path });
   }
 
   // JSON POSTs make the browser send a CORS "preflight" OPTIONS request first,
@@ -611,64 +750,103 @@
     return Object.assign({}, opts, { headers: Object.assign({}, h, { 'Content-Type': 'text/plain;charset=UTF-8' }) });
   }
 
-  // Tries each server in turn. Per server: the request, then one quick retry
-  // for a plain network failure, then (for JSON POSTs) a no-preflight retry.
-  // Worth trying another server for: no connection, a filter page, a server
-  // error, or (for GETs) a server that doesn't know this plugin.
+  // Tries each provider in turn. Per provider: the request, then one quick
+  // retry for a plain network failure, then (for JSON POSTs) a no-preflight
+  // retry. Worth trying the next provider for: no connection, a filter page,
+  // a server error, a rate/quota limit, or (for GETs) a provider that doesn't
+  // know this plugin. Each provider is tried at most once per request.
   function shouldTryNextServer(e, opts) {
     if (isConnErr(e)) return true;
-    if (e && e.status >= 500) return true;
+    if (e && (e.status >= 500 || e.providerLimit)) return true;
     return !!e && e.status === 404 && (!opts.method || opts.method === 'GET');
   }
 
-  // opts.primaryOnly: licensing calls, which only Cloudflare can answer.
+  // opts.primaryOnly: licensing calls, which only the licensing provider
+  // (Cloudflare) can answer.
   function request(path, opts) {
     opts = opts || {};
-    var bases = opts.primaryOnly ? SERVERS.slice(0, 1) : serverOrder(), i = 0, lastErr = null;
+    var licensing = !!opts.primaryOnly;
     var fetchOpts = Object.assign({}, opts); delete fetchOpts.primaryOnly;
     opts = fetchOpts;
 
-    function remember(base) {
+    var st = providerState(), now = Date.now();
+    var order = licensing ? [LICENSING_PROVIDER] : providerOrder();
+    if (!licensing && st.preferred && order[0].id !== st.preferred) {
+      log('info', 'provider.recheck', { provider: order[0].id, preferred: st.preferred, path: path, note: 'trying the default provider again (at most once a day)' });
+    }
+    var candidates = order.filter(function (p) {
+      if (!providerUrl(p, path)) return false; // e.g. Apps Script can't do licensing
+      if (p.type === 'apps-script' && opts.method && opts.method !== 'GET') return false;
+      var until = st.cooldownUntil[p.id] || 0;
+      if (until > now) {
+        log('info', 'provider.skipped', { provider: p.id, path: path, reason: 'rate/quota limit cooldown', until: new Date(until).toISOString() });
+        return false;
+      }
+      return true;
+    });
+    var i = 0, lastErr = null, tried = [];
+
+    function succeeded(p) {
       return function (r) {
-        if (base === SERVERS[0]) { if (lsGet('primaryDownUntil', 0)) { lsSet('primaryDownUntil', 0); log('info', 'server.primaryBack'); } }
-        else log('info', 'server.usedBackup', { server: base, path: path });
+        var s = providerState(), prev = s.preferred || null;
+        delete s.failedAt[p.id]; delete s.cooldownUntil[p.id];
+        if (prev !== p.id) {
+          s.preferred = p.id;
+          log('info', 'provider.preferenceChanged', { from: prev || '(none yet, new computer)', to: p.id, path: path });
+        }
+        saveProviderState(s);
+        log('info', 'provider.succeeded', { provider: p.id, path: path, tried: tried.slice(), fallbackUsed: tried.length > 1 });
+        r.provider = p.id;
         return r;
       };
     }
-    function notePrimaryDown(base, e) {
-      if (base !== SERVERS[0] || SERVERS.length < 2) return;
-      lsSet('primaryDownUntil', Date.now() + CONFIG.PRIMARY_RETRY_MS);
-      log('warn', 'server.primaryDown', { error: errInfo(e), backupFirstForMin: Math.round(CONFIG.PRIMARY_RETRY_MS / 60000) });
+    function noteFailure(p, e) {
+      var s = providerState();
+      if (isConnErr(e) || (e && (e.status >= 500 || e.providerLimit))) s.failedAt[p.id] = Date.now();
+      if (e && e.cooldownMs) {
+        s.cooldownUntil[p.id] = Date.now() + e.cooldownMs;
+        log('warn', 'provider.cooldown', { provider: p.id, reason: e.providerLimit, minutes: Math.round(e.cooldownMs / 60000) });
+      }
+      saveProviderState(s);
     }
 
-    function tryServer(base) {
-      var attempt = fetchOnce(base, path, opts).then(remember(base));
+    function tryProvider(p) {
+      var attempt = fetchVia(p, path, opts).then(succeeded(p));
       attempt = attempt.catch(function (e) {
         lastErr = e;
         if (!e || e.code !== 'network') throw e;
-        return delay(700).then(function () { return fetchOnce(base, path, opts, 'retry'); }).then(remember(base));
+        return delay(700).then(function () { return fetchVia(p, path, opts, 'retry'); }).then(succeeded(p));
       });
       var simple = simpleVariant(opts);
       if (simple) {
         attempt = attempt.catch(function (e) {
           lastErr = e;
           if (!isConnErr(e)) throw e;
-          return fetchOnce(base, path, simple, 'retry without CORS preflight').then(remember(base));
+          return fetchVia(p, path, simple, 'retry without CORS preflight').then(succeeded(p));
         });
       }
       return attempt;
     }
 
     function next() {
-      if (i >= bases.length) {
-        log('error', 'request.allServersFailed', { path: path, tried: bases, last: errInfo(lastErr) });
-        return Promise.reject(lastErr || connError('network', { path: path, reason: 'no servers configured' }));
+      if (i >= candidates.length) {
+        log('error', 'provider.allFailed', { path: path, tried: tried, last: errInfo(lastErr) });
+        return Promise.reject(lastErr || connError('network', { path: path, reason: 'no provider available' }));
       }
-      var base = bases[i++];
-      return tryServer(base).catch(function (e) {
+      var p = candidates[i++];
+      tried.push(p.id);
+      log('info', 'provider.attempt', { provider: p.id, path: path, position: i + ' of ' + candidates.length });
+      return tryProvider(p).catch(function (e) {
         lastErr = e;
-        if (!shouldTryNextServer(e, opts)) throw e; // a real answer (bad key, revoked, ...): don't hop servers
-        if (isConnErr(e) || e.status >= 500) notePrimaryDown(base, e);
+        var hop = shouldTryNextServer(e, opts);
+        noteFailure(p, e);
+        var nextP = hop ? candidates[i] : null;
+        log('warn', 'provider.failed', {
+          provider: p.id, path: path, code: e && e.code, status: e && e.status, message: e && e.message,
+          appsScriptError: e && e.appsScriptError, fallbackTo: nextP ? nextP.id : null,
+        });
+        if (!hop) throw e; // a real answer (bad key, revoked, ...): don't hop providers
+        if (nextP) log('info', 'provider.fallback', { from: p.id, to: nextP.id, path: path });
         return next();
       });
     }
@@ -721,8 +899,18 @@
     // -> { list, offline }
     getCatalog: function (fresh) {
       return request(fresh ? '/catalog?fresh=1&t=' + Date.now() : '/catalog').then(function (r) {
-        var list = cleanCatalog((JSON.parse(r.text) || {}).plugins);
+        var j = null;
+        try { j = JSON.parse(r.text); } catch (e) { throw Object.assign(new Error('Catalog was not valid JSON'), { code: 'server' }); }
+        var list = cleanCatalog((j || {}).plugins);
         if (!list.length) throw new Error('empty catalog');
+        // Backups (Vercel, Apps Script) only list free plugins. Keep paid ones
+        // from the last full catalog (or the built-in list) so they don't vanish.
+        if (r.provider !== LICENSING_PROVIDER.id) {
+          var have = {}; list.forEach(function (p) { have[p.id] = 1; });
+          (lsGet('catalog', null) || LOCAL_CATALOG).forEach(function (p) {
+            if (p && p.tier === 'premium' && !have[p.id]) list.push(p);
+          });
+        }
         lsSet('catalog', list);
         return { list: list, offline: false };
       }).catch(function (err) {
@@ -889,145 +1077,98 @@
     });
   }
 
-  // Download a newer Plugin Manager from GitHub releases. It's saved locally
-  // and picked up by the self-update check at the top of this file on the
-  // next launch, with no prompt.
+  // Download a newer Plugin Manager (GitHub releases; Apps Script as a
+  // fallback for networks that block GitHub). It's saved locally and started
+  // by the check at the top of this file on the next launch, with no prompt.
+  // Plugin data and settings live in their own keys and are left untouched.
+  var selfSources = [
+    {
+      id: 'github',
+      latest: function () {
+        return fetchText(CONFIG.SELF_UPDATE.manifest + '?t=' + Date.now(), 15000).then(function (t) { return (JSON.parse(t) || {}).version; });
+      },
+      code: function (v) { return fetchText(CONFIG.SELF_UPDATE.code.replace('{version}', v), 20000); },
+    },
+    {
+      id: 'apps-script',
+      latest: function () {
+        return selfViaAppsScript('/manager').then(function (r) { return (JSON.parse(r.text) || {}).version; });
+      },
+      code: function () { return selfViaAppsScript('/plugins/plugin-manager/download').then(function (r) { return r.text; }); },
+    },
+  ];
+  function selfViaAppsScript(path) {
+    var p = PROVIDERS.filter(function (x) { return x.type === 'apps-script'; })[0];
+    if (!p) return Promise.reject(new Error('No Apps Script provider configured'));
+    var until = providerState().cooldownUntil[p.id] || 0;
+    if (until > Date.now()) return Promise.reject(Object.assign(new Error('Apps Script cooling down after a quota limit'), { code: 'rate' }));
+    return fetchVia(p, path, {}).catch(function (e) {
+      if (e && e.cooldownMs) {
+        var st = providerState(); st.cooldownUntil[p.id] = Date.now() + e.cooldownMs; saveProviderState(st);
+      }
+      throw e;
+    });
+  }
+
   function selfUpdateCheck() {
-    var su = CONFIG.SELF_UPDATE;
-    if (!su || !su.manifest) return Promise.resolve();
-    return fetchText(su.manifest + '?t=' + Date.now(), 15000).then(function (text) {
-      var v = String((JSON.parse(text) || {}).version || '');
-      if (!/^\d+\.\d+\.\d+$/.test(v)) throw new Error('Bad version in manifest: ' + v);
-      if (cmpVer(v, PM_VERSION) <= 0) { log('info', 'selfUpdate.current', { running: PM_VERSION, latest: v }); return; }
-      var saved = lsGet('self', null);
-      if (saved && saved.version === v) { log('info', 'selfUpdate.pending', { version: v, note: 'applies on next launch' }); return; }
-      return fetchText(su.code.replace('{version}', v), 20000).then(function (code) {
-        if (code.length > CONFIG.MAX_BUNDLE_BYTES) throw new Error('Downloaded manager is too large.');
-        if (code.indexOf('__registerCardMirrorPlugin') < 0 || code.indexOf("PM_VERSION = '" + v + "'") < 0) {
-          throw new Error('Downloaded manager failed checks (wrong file or version).');
-        }
-        try { new Function(code); } catch (e) { throw new Error('Downloaded manager has a syntax error: ' + e.message); } // compile only
-        if (!lsSet('self', { version: v, code: code, savedAt: Date.now() })) throw new Error('Not enough local storage.');
-        log('info', 'selfUpdate.saved', { from: PM_VERSION, to: v, chars: code.length, note: 'applies on next launch' });
+    if (!CONFIG.SELF_UPDATE || !CONFIG.SELF_UPDATE.manifest) return Promise.resolve();
+    var bad = lsGet('selfBad', null);
+    var i = 0;
+    function trySource() {
+      if (i >= selfSources.length) { log('warn', 'selfUpdate.failed', { reason: 'no update source reachable' }); return Promise.resolve(); }
+      var src = selfSources[i++];
+      log('info', 'selfUpdate.check', { source: src.id, running: PM_VERSION });
+      return src.latest().then(function (latest) {
+        var v = String(latest || '');
+        if (!/^\d+\.\d+\.\d+$/.test(v)) throw new Error('Bad version in manifest: ' + v);
+        if (cmpVer(v, PM_VERSION) <= 0) { log('info', 'selfUpdate.current', { source: src.id, running: PM_VERSION, latest: v }); return; }
+        if (v === bad) { log('warn', 'selfUpdate.skipped', { version: v, reason: 'this version failed to start before; waiting for a newer one' }); return; }
+        var saved = lsGet('self', null);
+        if (saved && saved.version === v) { log('info', 'selfUpdate.pending', { version: v, note: 'applies on next launch' }); return; }
+        log('info', 'selfUpdate.downloading', { source: src.id, from: PM_VERSION, to: v });
+        return src.code(v).then(function (code) {
+          code = String(code || '');
+          if (code.length > CONFIG.MAX_BUNDLE_BYTES) throw new Error('Downloaded manager is too large.');
+          if (code.indexOf('__registerCardMirrorPlugin') < 0 || code.indexOf("PM_VERSION = '" + v + "'") < 0) {
+            throw new Error('Downloaded manager failed checks (wrong file or version).');
+          }
+          try { new Function(code); } catch (e) { throw new Error('Downloaded manager has a syntax error: ' + e.message); } // compile only
+          if (!lsSet('self', { version: v, code: code, savedAt: Date.now(), source: src.id, boots: 0 })) throw new Error('Not enough local storage.');
+          log('info', 'selfUpdate.saved', { source: src.id, from: PM_VERSION, to: v, chars: code.length, note: 'applies on next launch' });
+        });
+      }).catch(function (e) {
+        log('warn', 'selfUpdate.sourceFailed', { source: src.id, error: errInfo(e), next: selfSources[i] ? selfSources[i].id : null });
+        return trySource();
       });
-    }).catch(function (e) { log('warn', 'selfUpdate.failed', errInfo(e)); });
+    }
+    return trySource().catch(function (e) { log('warn', 'selfUpdate.crashed', errInfo(e)); });
+  }
+
+  // Runs in the newer copy once it has registered: it started fine, so reset
+  // the failed-start counter checked at the top of the file.
+  function confirmSelfBoot() {
+    var sb = window.__cmPluginManagerSelfBoot;
+    if (!sb || sb.failed || sb.to !== PM_VERSION) return;
+    var copy = lsGet('self', null);
+    if (copy && copy.version === PM_VERSION && copy.boots) { copy.boots = 0; lsSet('self', copy); }
+    log('info', 'selfUpdate.running', { from: sb.from, to: PM_VERSION });
   }
 
   function runBackgroundJobs() {
     if (window.__cmPluginManagerBgStarted) return;
     window.__cmPluginManagerBgStarted = true;
+    // The manager checks for its own update right away on every launch; plugin
+    // updates wait a few seconds so startup isn't slowed. Nothing here can
+    // stop CardMirror from starting: every job catches its own errors.
     setTimeout(function () {
-      usagePing();
-      autoUpdatePlugins().catch(function (e) { log('warn', 'autoUpdate.crashed', errInfo(e)); }).then(selfUpdateCheck);
+      try { selfUpdateCheck(); } catch (e) { log('warn', 'selfUpdate.crashed', errInfo(e)); }
+    }, 1500);
+    setTimeout(function () {
+      try {
+        usagePing();
+        autoUpdatePlugins().catch(function (e) { log('warn', 'autoUpdate.crashed', errInfo(e)); });
+      } catch (e) { log('warn', 'autoUpdate.crashed', errInfo(e)); }
     }, CONFIG.AUTO_UPDATE_DELAY_MS);
-  }
-
-  // ---------------------------------------------------------------------------
-  // Connection test (Diagnostics -> "Run connection test")
-  //
-  // Narrows down *where* things break by comparing a few requests:
-  //  - no-cors to cloudflare.com: is the internet / Cloudflare reachable at all?
-  //  - no-cors to the Worker: can we open a connection to it? (no CORS needed)
-  //  - normal (cors) request to the Worker: can we actually read the answer?
-  //  - a free plugin download: is JavaScript content being filtered?
-  // ---------------------------------------------------------------------------
-  function probe(label, url, mode) {
-    var t0 = Date.now(), ctl = new AbortController(), timedOut = false;
-    var timer = setTimeout(function () { timedOut = true; ctl.abort(); }, 12000);
-    return fetch(url, { mode: mode, cache: 'no-store', signal: ctl.signal }).then(function (res) {
-      var r = { probe: label, url: url, mode: mode, ok: true, status: res.status, type: res.type, ms: Date.now() - t0 };
-      if (res.redirected) { r.redirected = true; r.finalUrl = redactUrl(res.url); r.redirectedOffSite = hostOf(res.url) !== hostOf(url); }
-      var done = function () {
-        clearTimeout(timer);
-        log(r.intercepted ? 'warn' : 'info', r.intercepted ? 'probe.intercepted' : 'probe.ok', r);
-        return r;
-      };
-      if (mode !== 'cors') return done();
-      r.contentType = res.headers.get('Content-Type');
-      // Reading the body tells us whether we got the server's answer or a
-      // filter's page (the server never sends HTML).
-      return res.text().then(function (text) {
-        if (/text\/html/i.test(r.contentType || '') || /^\s*<(!doctype|html|head|body)/i.test(text)) {
-          var m = text.match(BLOCK_RE);
-          r.intercepted = true;
-          r.filterHint = m ? m[0] : null;
-          r.filterLogin = isLoginRedirect(res);
-        }
-        return done();
-      }, done);
-    }, function (err) {
-      clearTimeout(timer);
-      var r = { probe: label, url: url, mode: mode, ok: false, ms: Date.now() - t0, errName: err && err.name, errMessage: err && err.message, timedOut: timedOut };
-      log('error', 'probe.failed', r);
-      return r;
-    });
-  }
-
-  function runConnectionTest() {
-    log('info', 'test.start', envInfo());
-    var res = { servers: [], filter: null };
-    function noteFilter(name, login) {
-      res.filter = res.filter || { name: null, login: false };
-      res.filter.name = res.filter.name || name || null;
-      res.filter.login = res.filter.login || !!login;
-    }
-    var chain = probe('internet', 'https://www.cloudflare.com/cdn-cgi/trace', 'no-cors').then(function (r) {
-      res.internet = r.ok;
-      // If even cloudflare.com gets bounced elsewhere, the filter is catching
-      // everything this app sends, not just the plugin server.
-      res.internetIntercepted = !!r.redirectedOffSite;
-    });
-    SERVERS.forEach(function (s) {
-      chain = chain.then(function () {
-        var row = { server: s };
-        res.servers.push(row);
-        return probe('server-reach', s + '/catalog?diag=1', 'no-cors').then(function (r) {
-          row.reach = r.ok;
-          return probe('server-read', s + '/catalog?diag=1', 'cors');
-        }).then(function (r) {
-          row.intercepted = !!r.intercepted;
-          row.read = r.ok && !r.intercepted;
-          if (r.intercepted) noteFilter(r.filterHint, r.filterLogin);
-        });
-      });
-    });
-    chain = chain.then(function () {
-      // Real download through the normal path (also exercises block-page detection).
-      var free = (lsGet('catalog', null) || LOCAL_CATALOG).filter(function (p) { return p.tier === 'free'; })[0];
-      if (!free) { res.download = 'skipped'; return; }
-      return backend.installFree(free).then(function (r) {
-        res.download = 'ok'; log('info', 'test.download.ok', { id: free.id, chars: r.code.length, version: r.version });
-      }, function (e) {
-        res.download = e.code || 'error'; log('error', 'test.download.failed', { id: free.id, error: errInfo(e) });
-        if (e.code === 'filtered' && e.detail) noteFilter(e.detail.filterHint, e.detail.filterLogin);
-      });
-    });
-    return chain.then(function () {
-      var anyReach = res.servers.some(function (r) { return r.reach; });
-      var anyRead = res.servers.some(function (r) { return r.read; });
-      var hosts = SERVERS.map(hostOf).join(', ');
-      var v;
-      var primaryRow = res.servers[0] || {}, backupOk = res.servers.slice(1).some(function (r) { return r.read; });
-      if (res.download === 'ok' && !primaryRow.read && backupOk) v = 'The main plugin server (Cloudflare) is blocked or failing on this network, but the backup server works, so free plugins can still be installed and updated. Paid plugins need the main server.';
-      else if (!res.internet && !anyReach) v = 'Can’t reach Cloudflare or the plugin server at all. Either this computer is offline, or the network (or CardMirror itself) blocks outside connections.';
-      else if (!anyReach) v = 'The internet works, but the plugin server address is blocked on this network. Ask the network admin to allow ' + hosts + '.';
-      else if (res.filter) {
-        var f = res.filter;
-        v = 'This network’s web filter' + (f.name ? ' (' + f.name + ')' : '') + ' is intercepting requests to the plugin server' +
-          (f.login ? ' and sending them to its sign-in page. CardMirror can’t sign in to the filter the way a browser can, so it never reaches the server.' : ' and answering with its own page.') +
-          (res.internetIntercepted
-            ? ' It intercepted cloudflare.com too, so it is likely catching everything CardMirror sends.'
-            : ' cloudflare.com got through normally, so the filter is treating the plugin server’s address specially.') +
-          ' Ask IT to allow ' + hosts + ' (or exempt CardMirror), or install/update plugins on a different network — installed plugins keep working offline.';
-      }
-      else if (!anyRead) v = 'The plugin server is reachable, but its replies are being intercepted (a filter block page, SSL inspection, or a proxy stripping CORS headers).';
-      else if (res.download === 'filtered') v = 'The catalog loads, but downloading plugin code is blocked by a web filter (it returned a block page).';
-      else if (res.download !== 'ok' && res.download !== 'skipped') v = 'The catalog loads, but downloading plugin code failed (' + res.download + '). Possibly a filter blocking JavaScript downloads; see the log above.';
-      else v = 'Everything worked from this computer. If installs still fail, copy this log and send it to the developer.';
-      res.verdict = v;
-      log(/^Everything/.test(v) ? 'info' : 'warn', 'test.verdict', res);
-      return v;
-    });
   }
 
   // ---------------------------------------------------------------------------
@@ -1045,6 +1186,11 @@
       '<circle cx="4" cy="12" r="2.7" stroke-width="1.6"/><circle cx="4" cy="19.5" r="2.7" stroke-width="1.6"/>' +
       '<path d="M9.8 4.5h12M9.8 12h12M9.8 19.5h12" stroke-width="2"/>',
     gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+    // Opening and closing quotation marks.
+    quote: '<path d="M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/>' +
+      '<path d="M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/>',
+    // Three horizontal sliders stacked, each with its knob in a different spot.
+    sliders: '<path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/>',
     gavel: '<path d="m14.5 12.5-8 8a2.12 2.12 0 1 1-3-3l8-8"/><path d="m16 16 6-6"/><path d="m8 8 6-6"/><path d="m9 7 8 8"/><path d="m21 11-8-8"/>',
     gauge: '<path d="M5.64 20.36A9 9 0 1 1 20.65 11.52" stroke-width="2.8"/><path d="M20.65 11.52A9 9 0 0 1 18.36 20.36" stroke-width="2.8" opacity=".35"/><path d="M12 14l6.6-1.9" stroke-width="1.8"/><circle cx="12" cy="14" r="2.1" fill="currentColor" stroke="none"/>',
     brush: '<path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/>',
@@ -1154,6 +1300,9 @@
     '.modal h2{margin:0 0 4px;font-size:16px}',
     '.modal p{margin:0 0 14px;font-size:13px;color:var(--muted);line-height:1.5}',
     '.field{display:block;font-size:12px;font-weight:600;margin-bottom:6px}',
+    '.fbchk{display:flex;gap:9px;align-items:flex-start;margin-top:14px;font-size:12.5px;line-height:1.45;cursor:pointer}',
+    '.fbchk input{margin:2px 0 0;accent-color:var(--brand);flex:none}',
+    '.fbchk .muted{color:var(--muted)}',
     '.input{width:100%;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:var(--bg2);color:var(--fg);font:inherit;font-size:14px;font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:.04em;outline:0}',
     '.input:focus{border-color:var(--brand)}',
     '.err{margin-top:10px;padding:9px 12px;border-radius:9px;background:var(--badbg);color:var(--bad);font-size:12.5px;display:flex;gap:7px;align-items:center}',
@@ -1172,8 +1321,6 @@
     '.linkbtn{justify-self:start;font-size:11px;color:var(--muted);text-decoration:underline}',
     '.linkbtn:hover{color:var(--fg)}',
     '.modal.wide{width:min(720px,94%)}',
-    '.logbox{width:100%;height:300px;resize:vertical;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg2);color:var(--fg);font:11px/1.45 ui-monospace,Menlo,Consolas,monospace;white-space:pre;outline:0}',
-    '.verdict{margin:0 0 12px;padding:10px 14px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);font-size:12.5px;line-height:1.5}',
     '.toast.bad svg{color:#f87171}',
     '.gate{max-width:420px;margin:28px auto 0;text-align:center}',
     '.gate .big{width:56px;height:56px;border-radius:16px;background:var(--bg2);display:grid;place-items:center;margin:0 auto 14px}',
@@ -1281,7 +1428,6 @@
       checked: {},         // id -> 'ok' | 'error' after a check
       gate: { code: '', loading: false, error: null }, // code entry screen
       unlink: { confirm: false, busy: false, show: false }, // Settings
-      diag: null,          // { running, verdict } while the diagnostics view is open
       browserDl: null,     // { plugin, reason, error, loading } browser-download fallback
       toast: null,
     };
@@ -1333,7 +1479,6 @@
 
     function close() {
       closeOpenManager = null;
-      onLogChange = null;
       document.removeEventListener('keydown', onKey, true);
       if (host) host.remove();
       host = null;
@@ -1342,8 +1487,7 @@
     function onKey(e) {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        if (state.diag) closeDiag();
-        else if (state.feedback) { if (!state.feedback.sending) { state.feedback = null; render(); } }
+        if (state.feedback) { if (!state.feedback.sending) { state.feedback = null; render(); } }
         else if (state.browserDl) { if (!state.browserDl.loading) { state.browserDl = null; render(); } }
         else if (state.unlink.confirm && !state.unlink.busy) { state.unlink.confirm = false; render(); }
         else close();
@@ -1358,45 +1502,16 @@
       setTimeout(function () { if (state.toast === msg) { state.toast = null; render(); } }, 2600);
     }
 
-    // ---- diagnostics ----
-    var logRenderTimer = null;
-    function openDiag() {
-      state.diag = { running: false, verdict: null, fresh: true };
-      onLogChange = function () {
-        if (logRenderTimer) return;
-        logRenderTimer = setTimeout(function () { logRenderTimer = null; if (state.diag) render(); }, 150);
-      };
-      render();
-    }
-    function closeDiag() { state.diag = null; onLogChange = null; render(); }
-    function runDiagTest() {
-      if (!state.diag || state.diag.running) return;
-      state.diag.running = true; state.diag.verdict = null; render();
-      runConnectionTest().then(function (v) {
-        if (state.diag) { state.diag.running = false; state.diag.verdict = v; render(); }
-      }, function (e) {
-        log('error', 'test.crashed', errInfo(e));
-        if (state.diag) { state.diag.running = false; state.diag.verdict = 'The test itself failed: ' + (e && e.message); render(); }
-      });
-    }
-    function copyDiag() {
-      var text = diagText();
-      var fallback = function () {
-        var ta = root.querySelector('#logbox');
-        if (ta) { ta.focus(); ta.select(); }
-        var ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
-        toast(ok ? 'Log copied' : 'Select the log text and copy it manually', !ok);
-      };
-      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { toast('Log copied'); }, fallback);
-      else fallback();
-    }
-
     // ---- browser-download fallback ----
     // When CardMirror itself can't reach the server (e.g. a school filter wants
     // a browser sign-in), the user's web browser may still be let through. We
     // open the download link there, the user saves the file, and imports it.
     // Free plugins only: premium downloads need a POST with the license key.
-    function downloadUrl(p) { return serverOrder()[0] + '/plugins/' + encodeURIComponent(p.id) + '/download'; }
+    function downloadUrl(p) {
+      var path = '/plugins/' + encodeURIComponent(p.id) + '/download';
+      var prov = providerOrder().filter(function (x) { return providerUrl(x, path); })[0];
+      return providerUrl(prov, path);
+    }
 
     function openBrowserDl(p, e) {
       var reason = !e ? null
@@ -1580,18 +1695,18 @@
         expired: 'This code has expired.',
         revoked: 'This code has been turned off.',
         bound: 'This code is already linked to another computer. Unlink it there (Settings), or contact the developer.',
-        network: 'Couldn\u2019t reach the plugin server. Check your connection, or open Diagnostics (bottom-left) to find out why.',
-        timeout: 'The plugin server took too long to answer. Open Diagnostics (bottom-left) for details.',
-        filtered: 'This network seems to be blocking the plugin server (a web filter answered instead). Open Diagnostics (bottom-left) for details.',
+        network: 'Couldn\u2019t reach the plugin server. Check your connection. If it keeps happening, use Send feedback (bottom-left) with the log included.',
+        timeout: 'The plugin server took too long to answer. Please try again.',
+        filtered: 'This network seems to be blocking the plugin server (a web filter answered instead).',
         server: 'The plugin server had a problem. Please try again in a moment.',
-        rate: 'Too many requests. Please wait a minute and try again.',
+        rate: 'The plugin server is busy right now. Please wait a minute and try again.',
         blocked: 'CardMirror blocked this plugin from running.',
         storage: 'Not enough local storage to save this plugin.',
       };
       if (e.code === 'filtered' && e.detail) {
         return 'This network’s web filter' + (e.detail.filterHint ? ' (' + e.detail.filterHint + ')' : '') +
           (e.detail.filterLogin ? ' wants a sign-in before CardMirror can reach the plugin server' : ' is blocking the plugin server') +
-          '. Ask IT to allow it, or install on another network. Diagnostics (bottom-left) has details.';
+          '. Ask IT to allow it, or install on another network.';
       }
       return map[e.code] || e.message || 'Something went wrong.';
     }
@@ -1685,7 +1800,7 @@
 
     // ---- feedback ----
     function openFeedback() {
-      state.feedback = { kind: 'idea', message: '', email: '', sending: false, error: null, fresh: true };
+      state.feedback = { kind: 'idea', message: '', email: '', includeLog: true, sending: false, error: null, fresh: true };
       render();
       var t = root.querySelector('#fbmsg'); if (t) t.focus();
     }
@@ -1707,8 +1822,10 @@
       postJson(CONFIG.ADMIN_API + '/api/public/feedback', {
         kind: f.kind, message: f.message, email: f.email, deviceId: deviceId(),
         managerVersion: PM_VERSION, platform: navigator.platform, plugins: feedbackPlugins(),
+        // Emailed to the developer as an attachment; never shown here.
+        log: f.includeLog ? diagText().slice(-200000) : undefined,
       }).then(function () {
-        log('info', 'feedback.sent', { kind: f.kind, chars: f.message.length });
+        log('info', 'feedback.sent', { kind: f.kind, chars: f.message.length, withLog: !!f.includeLog });
         state.feedback = null; toast('Thanks! Your feedback was sent.'); render();
       }, function (e) {
         log('error', 'feedback.failed', errInfo(e));
@@ -1732,6 +1849,8 @@
         '<textarea id="fbmsg" class="input plain" rows="5" maxlength="4000" placeholder="What happened, or what would you like?"' + dis + '>' + esc(f.message) + '</textarea>' +
         '<label class="field" for="fbemail" style="margin-top:12px">Your email (optional, for a reply)</label>' +
         '<input id="fbemail" class="input plain" type="email" placeholder="you@example.com" value="' + esc(f.email) + '"' + dis + '>' +
+        '<label class="fbchk"><input id="fblog" type="checkbox"' + (f.includeLog ? ' checked' : '') + dis + '>' +
+          '<span>Include a log to help fix problems <span class="muted">(technical info about this app\u2019s connections; no codes or personal files)</span></span></label>' +
         (f.error ? '<div class="err">' + icon('alert', 15) + '<span>' + esc(f.error) +
           (f.offerMail ? ' <a href="' + esc(mailtoFeedback(f)) + '" style="color:inherit">Email it instead</a>.' : '') + '</span></div>' : '') +
         '<div class="mfoot"><button class="btn" data-act="fb-cancel"' + dis + '>Cancel</button>' +
@@ -1846,23 +1965,6 @@
       return '<div class="set">' + codeSec + unlinkSec + '</div>';
     }
 
-    function diagView() {
-      var d = state.diag; if (!d) return '';
-      return '<div class="modalscrim" data-act="diag-bg"><div class="modal wide' + (d.fresh ? ' enter' : '') + '">' +
-        '<h2>Diagnostics</h2>' +
-        '<p>Run the connection test on the computer where installs fail, then copy the log and send it over. License keys are never recorded. ' +
-        'The manager also sends an anonymous check-in about twice a day (a random install ID, app versions and OS) so the developer can count users.</p>' +
-        (d.verdict ? '<div class="verdict"><b>Result:</b> ' + esc(d.verdict) + '</div>' : '') +
-        '<textarea id="logbox" class="logbox" readonly spellcheck="false">' + esc(diagText()) + '</textarea>' +
-        '<div class="mfoot">' +
-        '<button class="btn danger" data-act="diag-clear"' + (d.running ? ' disabled' : '') + '>' + icon('trash', 14) + 'Clear log</button>' +
-        '<span class="grow"></span>' +
-        '<button class="btn" data-act="diag-copy">Copy log</button>' +
-        '<button class="btn primary" data-act="diag-test"' + (d.running ? ' disabled' : '') + '>' + (d.running ? spinner() + 'Testing…' : icon('refresh', 14) + 'Run connection test') + '</button>' +
-        '<button class="btn" data-act="diag-close">Close</button>' +
-        '</div></div></div>';
-    }
-
     // ---- render ----
     var firstRender = true;
     var KEEP_FOCUS = { q: 1, fbmsg: 1, fbemail: 1, code: 1 };
@@ -1901,20 +2003,19 @@
         bar +
         '<div class="body">' +
         (state.offline && !gated && state.view !== 'settings' ? '<div class="banner">' + icon('alert', 15) + '<span>Couldn\u2019t reach the plugin server \u2014 showing the last saved catalog. Installing needs a connection. ' +
-          '<button class="linkbtn" style="color:inherit;font-size:inherit" data-act="diag">Open Diagnostics</button></span></div>' : '') +
+          'If this keeps happening, <button class="linkbtn" style="color:inherit;font-size:inherit" data-act="feedback">contact the developer</button>.</span></div>' : '') +
         body + '</div>' +
-        '<footer><span style="display:flex;gap:14px"><button class="linkbtn" data-act="feedback">Send feedback</button><button class="linkbtn" data-act="diag">Diagnostics</button>' +
+        '<footer><span style="display:flex;gap:14px"><button class="linkbtn" data-act="feedback">Send feedback</button>' +
           '</span><span class="mid">Contact developer \u2013 <a href="mailto:jacobscardmirrorplugins@gmail.com">jacobscardmirrorplugins@gmail.com</a></span>' +
         '<button class="tog ' + (fabEnabled() ? 'on' : '') + '" data-act="fab-toggle" role="switch" aria-checked="' + fabEnabled() + '">Floating button<span class="sw"></span></button></footer>' +
-        browserDlView() + feedbackView() + diagView() +
+        browserDlView() + feedbackView() +
         (state.toast ? '<div class="toast' + (state.toastBad ? ' bad' : '') + '">' + icon(state.toastBad ? 'x' : 'check', 15) + esc(state.toast) + '</div>' : '') +
         '</div></div>';
 
       var wasFirst = firstRender;
-      firstRender = false; if (state.diag) state.diag.fresh = false; if (state.browserDl) state.browserDl.fresh = false; if (state.feedback) state.feedback.fresh = false;
+      firstRender = false; if (state.browserDl) state.browserDl.fresh = false; if (state.feedback) state.feedback.fresh = false;
       renderedView = state.view;
       var nb = root.querySelector('.body'); if (nb && keepScroll) nb.scrollTop = keepScroll;
-      var lb = root.querySelector('#logbox'); if (lb) lb.scrollTop = lb.scrollHeight;
       if (KEEP_FOCUS[focused]) {
         var el = root.querySelector('#' + focused);
         if (el && !el.disabled) { el.focus(); try { if (caret != null) el.setSelectionRange(caret, caret); } catch (e) {} }
@@ -1933,7 +2034,6 @@
       if (act === 'unlink-start') { state.unlink.confirm = true; render(); return; }
       if (act === 'unlink-cancel') { state.unlink.confirm = false; render(); return; }
       if (act === 'unlink-confirm') { unlinkAndUninstall(); return; }
-      if (act === 'diag-bg') { if (e.target === t) closeDiag(); return; }
       if (act === 'bd-bg') { if (e.target === t && !state.browserDl.loading) { state.browserDl = null; render(); } return; }
       if (act === 'bd-cancel') { state.browserDl = null; render(); return; }
       if (act === 'bd-open') { log('info', 'browserDl.open', { id: state.browserDl && state.browserDl.plugin.id }); return; } // link opens itself
@@ -1943,11 +2043,6 @@
       if (act === 'fb-bg') { if (e.target === t && !state.feedback.sending) { state.feedback = null; render(); } return; }
       if (act === 'fb-cancel') { state.feedback = null; render(); return; }
       if (act === 'fb-send') { sendFeedback(); return; }
-      if (act === 'diag') { openDiag(); return; }
-      if (act === 'diag-close') { closeDiag(); return; }
-      if (act === 'diag-test') { runDiagTest(); return; }
-      if (act === 'diag-copy') { copyDiag(); return; }
-      if (act === 'diag-clear') { clearLog(); render(); toast('Log cleared'); return; }
       if (act === 'close') close();
       else if (act === 'tab') { state.view = t.getAttribute('data-v'); state.unlink.confirm = false; render(); }
       else if (act === 'install') startInstall(byId(id));
@@ -1964,6 +2059,7 @@
     root.addEventListener('change', function (e) {
       if (e.target.id === 'bdfile' && e.target.files && e.target.files[0]) importFromFile(e.target.files[0]);
       if (e.target.id === 'fbkind' && state.feedback) state.feedback.kind = e.target.value;
+      if (e.target.id === 'fblog' && state.feedback) state.feedback.includeLog = e.target.checked;
     });
     root.addEventListener('input', function (e) {
       if (e.target.id === 'fbmsg' && state.feedback) state.feedback.message = e.target.value;
@@ -2006,6 +2102,7 @@
     online: navigator.onLine, origin: location.origin, userAgent: navigator.userAgent,
     selfBoot: window.__cmPluginManagerSelfBoot || null,
   });
+  confirmSelfBoot();
 
   // Re-run every plugin installed through the manager (after our own
   // registration, so the manager always loads first).

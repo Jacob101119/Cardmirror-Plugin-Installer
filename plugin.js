@@ -532,6 +532,7 @@
     var code =
       /expir/.test(t) ? 'expired' :
       /revok/.test(t) ? 'revoked' :
+      /different product/.test(t) ? 'wrongproduct' :
       /bound|another device|different device|device mismatch|device limit/.test(t) ? 'bound' :
       /invalid|not found|unknown|no such|unauthor/.test(t) ? 'invalid' :
       status === 429 ? 'rate' :
@@ -849,9 +850,9 @@
       log('info', 'autoUpdate.check', { installed: ids.length, due: due.map(function (p) { return p.id + '@' + p.version; }) });
       return due.reduce(function (chain, p) {
         return chain.then(function () {
-          var keys = lsGet('licenses', {});
+          var key = lsGet('storeKey', null) || lsGet('licenses', {})[p.id];
           var run = p.tier !== 'premium' ? backend.installFree(p)
-            : keys[p.id] ? backend.installPremium(p, bgDeviceId(), keys[p.id])
+            : key ? backend.installPremium(p, bgDeviceId(), key)
             : Promise.reject(Object.assign(new Error('No saved license'), { code: 'invalid' }));
           return run.then(function (r) {
             var bundles = lsGet('bundles', {});
@@ -863,7 +864,7 @@
             log('info', 'autoUpdate.ok', { id: p.id, version: r.version });
           }).catch(function (e) {
             log('warn', 'autoUpdate.failed', { id: p.id, error: errInfo(e) });
-            if (p.tier === 'premium' && /^(expired|revoked|invalid|bound)$/.test(e.code || '')) {
+            if (p.tier === 'premium' && /^(expired|revoked|invalid|wrongproduct|bound)$/.test(e.code || '')) {
               var m = lsGet('installed', {});
               if (m[p.id]) { m[p.id].license = Object.assign({}, m[p.id].license, { status: e.code }); lsSet('installed', m); }
             }
@@ -1258,7 +1259,14 @@
       if (!id) { id = uuid(); sset('deviceId', id); } // generated once, persisted, never regenerated
       return id;
     }
-    function licenses() { return sget('licenses', {}); }
+    function licenses() { return sget('licenses', {}); } // older per-plugin keys
+    // One key for the whole store. Older per-plugin keys still work for
+    // their own plugin.
+    function storeKey() { return sget('storeKey', null); }
+    function keyFor(p) { return storeKey() || licenses()[p.id] || null; }
+    function setStoreKey(k) { sset('storeKey', k); }
+    function keyHint(k) { return '\u2022\u2022\u2022\u2022 ' + String(k || '').slice(-4); }
+    var LICENSE_CODES = { invalid: 1, wrongproduct: 1, expired: 1, revoked: 1, bound: 1 };
 
     // Persist + run a downloaded bundle, then record it as installed.
     function applyInstall(p, r, extra) {
@@ -1427,8 +1435,42 @@
         : 'Couldn\u2019t open ' + p.name + ' \u2014 restart CardMirror, then try again', true);
     }
 
+    // Activate the key for this plugin on this device, download it, and save
+    // the key as the store key so other paid plugins install without asking.
+    function premiumInstall(p, key) {
+      var dev = deviceId();
+      return backend.activate(p, key, dev).then(function () {
+        log('info', 'license.activated', { id: p.id });
+        return backend.installPremium(p, dev, key);
+      }).then(function (r) {
+        setStoreKey(key);
+        return applyInstall(p, r, { license: { status: 'active', hint: keyHint(key) } });
+      });
+    }
+
+    function openKeyModal(p, error) {
+      state.modal = { plugin: p, error: error || null, loading: false, key: '', fresh: true };
+      render();
+    }
+
     function startInstall(p) {
-      if (p.tier === 'premium') { state.modal = { plugin: p, error: null, loading: false, key: '', fresh: true }; render(); return; }
+      if (p.tier === 'premium') {
+        var saved = keyFor(p);
+        if (!saved) { openKeyModal(p); return; }
+        state.busy[p.id] = 'installing'; render();
+        log('info', 'install.start', { id: p.id, tier: 'premium', version: p.version, savedKey: true });
+        premiumInstall(p, saved).then(function (mode) {
+          log('info', 'install.ok', { id: p.id, mode: mode });
+          delete state.busy[p.id]; toast(p.name + (mode === 'restart' ? ' installed \u2014 restart CardMirror to activate' : ' installed')); render();
+        }).catch(function (e) {
+          log('error', 'install.failed', { id: p.id, tier: 'premium', savedKey: true, error: errInfo(e) });
+          delete state.busy[p.id];
+          // The saved key doesn't cover this plugin (or stopped working): ask for one.
+          if (LICENSE_CODES[e.code]) { openKeyModal(p, 'Your saved key: ' + errorMessage(e)); return; }
+          toast('Install failed: ' + errorMessage(e), true); render();
+        });
+        return;
+      }
       state.busy[p.id] = 'installing'; render();
       log('info', 'install.start', { id: p.id, tier: 'free', version: p.version });
       backend.installFree(p).then(function (r) { return applyInstall(p, r); }).then(function (mode) {
@@ -1447,16 +1489,11 @@
       var input = root.querySelector('#lic');
       mo.key = input ? input.value.trim() : mo.key;
       mo.loading = true; mo.error = null; render();
-      var p = mo.plugin, dev = deviceId();
-      var key = mo.key;
+      var p = mo.plugin;
+      var key = mo.key.toUpperCase();
+      if (!key) { mo.loading = false; mo.error = 'Enter your key.'; render(); return; }
       log('info', 'install.start', { id: p.id, tier: 'premium', version: p.version, keyChars: key.length });
-      backend.activate(p, key, dev).then(function () {
-        log('info', 'license.activated', { id: p.id });
-        return backend.installPremium(p, dev, key);
-      }).then(function (r) {
-        var ls = licenses(); ls[p.id] = key; sset('licenses', ls);
-        return applyInstall(p, r, { license: { status: 'active', hint: '\u2022\u2022\u2022\u2022 ' + key.slice(-4) } });
-      }).then(function (mode) {
+      premiumInstall(p, key).then(function (mode) {
         log('info', 'install.ok', { id: p.id, mode: mode });
         state.modal = null; toast(p.name + (mode === 'restart' ? ' installed \u2014 restart CardMirror to activate' : ' installed')); render();
       }).catch(function (e) {
@@ -1467,7 +1504,8 @@
 
     function errorMessage(e) {
       var map = {
-        invalid: 'That license key isn\u2019t valid.',
+        invalid: 'That key isn\u2019t valid.',
+        wrongproduct: 'That key doesn\u2019t include this plugin.',
         expired: 'This license has expired.',
         revoked: 'This license has been revoked.',
         bound: 'This license is already activated on another device.',
@@ -1493,7 +1531,7 @@
       p = Object.assign({}, p, { version: latestFor(p) });
       var run;
       if (p.tier === 'premium') {
-        var key = licenses()[p.id];
+        var key = keyFor(p);
         run = key ? backend.installPremium(p, deviceId(), key)
                   : Promise.reject(Object.assign(new Error('No saved license'), { code: 'invalid' }));
       } else run = backend.installFree(p);
@@ -1506,7 +1544,7 @@
         log('error', 'update.failed', { id: p.id, error: errInfo(e) });
         delete state.busy[p.id];
         if (p.tier !== 'premium' && isConnErr(e)) { openBrowserDl(p, e); return; }
-        if (p.tier === 'premium' && (e.code === 'expired' || e.code === 'revoked' || e.code === 'invalid' || e.code === 'bound')) {
+        if (p.tier === 'premium' && LICENSE_CODES[e.code]) {
           var m = installed(); if (m[p.id]) { m[p.id].license = Object.assign({}, m[p.id].license, { status: e.code }); setInstalled(m); }
         }
         toast('Update failed: ' + errorMessage(e), true); render();
@@ -1518,7 +1556,7 @@
       forgetManagedPlugin(p.id);
       var bundles = lsGet('bundles', {}); delete bundles[p.id]; lsSet('bundles', bundles);
       var m = installed(); delete m[p.id]; setInstalled(m);
-      var ls = licenses(); delete ls[p.id]; sset('licenses', ls);
+      var ls = licenses(); delete ls[p.id]; sset('licenses', ls); // the store key stays
       delete state.latest[p.id]; delete state.checked[p.id];
       delay(300).then(function () {
         delete state.busy[p.id];
@@ -1649,7 +1687,10 @@
       if (busy === 'installing' || busy === 'updating') action = '<button class="btn primary" disabled>' + spinner() + (busy === 'installing' ? 'Installing\u2026' : 'Updating\u2026') + '</button>';
       else if (rec && hasUpd) action = '<button class="btn primary" data-act="update" data-id="' + esc(p.id) + '">' + icon('refresh', 14) + 'Update</button>';
       else if (rec) action = '<button class="btn" disabled>' + icon('check', 14) + 'Installed</button>';
-      else action = '<button class="btn primary" data-act="install" data-id="' + esc(p.id) + '">' + icon(p.tier === 'premium' ? 'key' : 'download', 14) + (p.tier === 'premium' ? 'Install\u2026' : 'Install') + '</button>';
+      else {
+        var needsKey = p.tier === 'premium' && !keyFor(p);
+        action = '<button class="btn primary" data-act="install" data-id="' + esc(p.id) + '">' + icon(needsKey ? 'key' : 'download', 14) + (needsKey ? 'Install\u2026' : 'Install') + '</button>';
+      }
       var status = rec
         ? '<span class="status ok">' + icon('check', 13) + 'Installed v' + esc(rec.version) + (p.openCommand ? ' \u00b7 click to open' : '') + '</span>'
         : '<span class="status">Not installed</span>';
@@ -1709,15 +1750,15 @@
       var mo = state.modal; if (!mo) return '';
       var p = mo.plugin;
       return '<div class="modalscrim" data-act="modal-bg"><div class="modal' + (mo.fresh ? ' enter' : '') + '">' +
-        '<div class="row" style="align-items:center;margin-bottom:14px">' + tile(p, 22).replace('width:48px', '') + '<div><h2>Activate ' + esc(p.name) + '</h2></div></div>' +
-        '<p>Enter your license key to unlock this paid plugin. Your license is saved on this device so you won\u2019t need to enter it again.</p>' +
-        '<label class="field" for="lic">License key</label>' +
+        '<div class="row" style="align-items:center;margin-bottom:14px">' + tile(p, 22).replace('width:48px', '') + '<div><h2>Unlock ' + esc(p.name) + '</h2></div></div>' +
+        '<p>Enter your CardMirror Plugins key. One key unlocks every paid plugin, and it\u2019s saved on this device so you won\u2019t need to enter it again.</p>' +
+        '<label class="field" for="lic">Plugins key</label>' +
         '<input id="lic" class="input" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false" value="' + esc(mo.key) + '"' + (mo.loading ? ' disabled' : '') + '>' +
         (mo.error ? '<div class="err">' + icon('alert', 15) + esc(mo.error) + '</div>' : '') +
         '<div class="hint">Don\u2019t have a key? <a href="https://www.google.com" target="_blank" rel="noopener noreferrer">Get one</a>.</div>' +
-        '<div class="hint">Licenses are bound to one device. Need to move it? <a href="mailto:jacobscardmirrorplugins@gmail.com">Contact</a> the developer for a reset.</div>' +
+        '<div class="hint">Keys work on one device. Need to move yours? <a href="mailto:jacobscardmirrorplugins@gmail.com">Contact</a> the developer for a reset.</div>' +
         '<div class="mfoot"><button class="btn" data-act="modal-cancel"' + (mo.loading ? ' disabled' : '') + '>Cancel</button>' +
-        '<button class="btn primary" data-act="modal-submit"' + (mo.loading ? ' disabled' : '') + '>' + (mo.loading ? spinner() + 'Activating\u2026' : 'Activate &amp; install') + '</button></div>' +
+        '<button class="btn primary" data-act="modal-submit"' + (mo.loading ? ' disabled' : '') + '>' + (mo.loading ? spinner() + 'Activating\u2026' : 'Unlock &amp; install') + '</button></div>' +
         '</div></div>';
     }
 
@@ -1772,7 +1813,9 @@
         (state.offline ? '<div class="banner">' + icon('alert', 15) + '<span>Couldn\u2019t reach the plugin server \u2014 showing the last saved catalog. Installing needs a connection. ' +
           '<button class="linkbtn" style="color:inherit;font-size:inherit" data-act="diag">Open Diagnostics</button></span></div>' : '') +
         body + '</div>' +
-        '<footer><span style="display:flex;gap:14px"><button class="linkbtn" data-act="feedback">Send feedback</button><button class="linkbtn" data-act="diag">Diagnostics</button></span><span class="mid">Contact developer \u2013 <a href="mailto:jacobscardmirrorplugins@gmail.com">jacobscardmirrorplugins@gmail.com</a></span>' +
+        '<footer><span style="display:flex;gap:14px"><button class="linkbtn" data-act="feedback">Send feedback</button><button class="linkbtn" data-act="diag">Diagnostics</button>' +
+          (storeKey() ? '<button class="linkbtn" data-act="forget-key" title="Remove the saved plugins key from this computer">Key ' + esc(keyHint(storeKey())) + ' \u00b7 forget</button>' : '') +
+          '</span><span class="mid">Contact developer \u2013 <a href="mailto:jacobscardmirrorplugins@gmail.com">jacobscardmirrorplugins@gmail.com</a></span>' +
         '<button class="tog ' + (fabEnabled() ? 'on' : '') + '" data-act="fab-toggle" role="switch" aria-checked="' + fabEnabled() + '">Floating button<span class="sw"></span></button></footer>' +
         modalView() + browserDlView() + feedbackView() + diagView() +
         (state.toast ? '<div class="toast' + (state.toastBad ? ' bad' : '') + '">' + icon(state.toastBad ? 'x' : 'check', 15) + esc(state.toast) + '</div>' : '') +
@@ -1813,6 +1856,11 @@
       if (act === 'close') close();
       else if (act === 'tab') { state.view = t.getAttribute('data-v'); render(); }
       else if (act === 'install') startInstall(byId(id));
+      else if (act === 'forget-key') {
+        sset('storeKey', null); sset('licenses', {});
+        log('info', 'license.forgotten');
+        toast('Key removed from this computer. Installed plugins keep working.'); render();
+      }
       else if (act === 'open-plugin') openPlugin(byId(id));
       else if (act === 'fab-toggle') {
         var on = !fabEnabled(); sset('fab', on); render();

@@ -1092,15 +1092,36 @@
 
   // Download newer versions of installed plugins. Each plugin already ran
   // this session, so the new code takes effect on the next launch.
+  // Settings -> Auto Updates (on by default). Covers installed plugins; the
+  // Plugin Manager itself always keeps itself up to date.
+  function autoUpdatesOn() { return lsGet('autoUpdates', true) !== false; }
+
+  // An installed plugin needs updating when its version differs from the
+  // live catalog's. "Differs", not just "older": plugins installed while the
+  // catalog couldn't load were recorded with a placeholder 1.0.0, which is
+  // higher than the real versions and would otherwise never update.
+  function needsUpdate(catalogVersion, rec) {
+    return !!rec && !!catalogVersion && cmpVer(catalogVersion, rec.version) !== 0;
+  }
+
+  // Shared with an open panel so the two never update the same plugin at
+  // once, and the panel redraws when the background job finishes one.
+  var bgUpdating = {};
+  var onBgUpdate = null;
+  function notifyBg() { if (onBgUpdate) { try { onBgUpdate(); } catch (e) {} } }
+
   function autoUpdatePlugins() {
+    if (!autoUpdatesOn()) { log('info', 'autoUpdate.off', { reason: 'Auto Updates is turned off in Settings' }); return Promise.resolve(); }
     var inst = lsGet('installed', {}), ids = Object.keys(inst);
     if (!ids.length) return Promise.resolve();
     return backend.getCatalog(true).then(function (c) {
       if (c.offline) { log('warn', 'autoUpdate.skipped', { reason: 'catalog unavailable' }); return; }
-      var due = c.list.filter(function (p) { return inst[p.id] && cmpVer(p.version, inst[p.id].version) > 0; });
+      var due = c.list.filter(function (p) { return needsUpdate(p.version, inst[p.id]); });
       log('info', 'autoUpdate.check', { installed: ids.length, due: due.map(function (p) { return p.id + '@' + p.version; }) });
       return due.reduce(function (chain, p) {
         return chain.then(function () {
+          if (bgUpdating[p.id] === 'panel') return; // the open panel is already updating it
+          bgUpdating[p.id] = 'bg'; notifyBg();
           var key = lsGet('storeKey', null) || lsGet('licenses', {})[p.id];
           var run = p.tier !== 'premium' ? backend.installFree(p)
             : key ? backend.installPremium(p, bgDeviceId(), key)
@@ -1119,7 +1140,7 @@
               var m = lsGet('installed', {});
               if (m[p.id]) { m[p.id].license = Object.assign({}, m[p.id].license, { status: e.code }); lsSet('installed', m); }
             }
-          });
+          }).then(function () { delete bgUpdating[p.id]; notifyBg(); });
         });
       }, Promise.resolve());
     });
@@ -1452,6 +1473,12 @@
     '.set-sec h3{margin:0 0 4px;font-size:14px}',
     '.set-sec p{margin:0;font-size:12.5px;color:var(--muted);line-height:1.5}',
     '.set-sec.danger h3{color:var(--bad)}',
+    '.set-row{display:flex;align-items:center;justify-content:space-between;gap:18px}',
+    '.tog.big{flex:none;cursor:pointer}',
+    '.tog.big .sw{width:40px;height:22px}',
+    '.tog.big .sw::after{top:2px;left:2px;width:16px;height:16px}',
+    '.tog.big.on .sw{background:var(--brand);border-color:var(--brand)}',
+    '.tog.big.on .sw::after{transform:translateX(18px);background:var(--brand-fg)}',
     '.codebox{display:flex;gap:8px;align-items:center;margin-top:12px}',
     '.codebox code{flex:1;font-size:15px;letter-spacing:.08em;padding:9px 12px;background:var(--bg2);border:1px solid var(--line);border-radius:10px;word-break:normal}',
     '.warnbox{margin-top:12px;padding:12px 14px;border-radius:10px;background:var(--badbg);color:var(--bad);font-size:12.5px;line-height:1.5}',
@@ -1548,6 +1575,7 @@
       unlink: { confirm: false, busy: false, show: false }, // Settings
       browserDl: null,     // { plugin, reason, error, loading } browser-download fallback
       toast: null,
+      autoFailed: {},      // id -> true: Auto Updates failed once this panel session (no retry loop)
     };
     log('info', 'panel.open', { version: PM_VERSION });
 
@@ -1597,6 +1625,7 @@
 
     function close() {
       closeOpenManager = null;
+      onBgUpdate = null;
       document.removeEventListener('keydown', onKey, true);
       if (host) host.remove();
       host = null;
@@ -1829,7 +1858,11 @@
       return map[e.code] || e.message || 'Something went wrong.';
     }
 
-    function startUpdate(p) {
+    // auto = started by Auto Updates: on failure, log and show a small
+    // message instead of opening the browser-download dialog.
+    function startUpdate(p, auto) {
+      if (state.busy[p.id] || bgUpdating[p.id]) return Promise.resolve();
+      bgUpdating[p.id] = 'panel';
       state.busy[p.id] = 'updating'; render();
       var rec = installed()[p.id] || {};
       p = Object.assign({}, p, { version: latestFor(p) });
@@ -1839,14 +1872,17 @@
         run = key ? backend.installPremium(p, deviceId(), key)
                   : Promise.reject(Object.assign(new Error('No saved license'), { code: 'invalid' }));
       } else run = backend.installFree(p);
-      log('info', 'update.start', { id: p.id, to: p.version, from: rec.version });
-      run.then(function (r) { return applyInstall(p, r); }).then(function (mode) {
-        log('info', 'update.ok', { id: p.id, mode: mode });
+      log('info', 'update.start', { id: p.id, to: p.version, from: rec.version, auto: !!auto });
+      return run.then(function (r) { return applyInstall(p, r); }).then(function (mode) {
+        delete bgUpdating[p.id];
+        log('info', 'update.ok', { id: p.id, mode: mode, auto: !!auto });
         delete state.busy[p.id]; delete state.latest[p.id]; state.checked[p.id] = 'ok';
         toast(p.name + ' updated to ' + p.version + (mode === 'restart' ? ' \u2014 restart CardMirror to apply' : '')); render();
       }).catch(function (e) {
-        log('error', 'update.failed', { id: p.id, error: errInfo(e) });
+        delete bgUpdating[p.id];
+        log('error', 'update.failed', { id: p.id, error: errInfo(e), auto: !!auto });
         delete state.busy[p.id];
+        if (auto) { state.autoFailed[p.id] = true; toast('Couldn\u2019t update ' + p.name + ': ' + errorMessage(e), true); render(); return; }
         if (p.tier !== 'premium' && isConnErr(e)) { openBrowserDl(p, e); return; }
         if (p.tier === 'premium' && LICENSE_CODES[e.code]) {
           var m = installed(); if (m[p.id]) { m[p.id].license = Object.assign({}, m[p.id].license, { status: e.code }); setInstalled(m); }
@@ -1869,7 +1905,28 @@
     }
 
     function latestFor(p) { return state.latest[p.id] || p.version; }
-    function hasUpdate(p, rec) { return !!rec && cmpVer(latestFor(p), rec.version) > 0; }
+    function hasUpdate(p, rec) {
+      // An offline (built-in) catalog has placeholder versions: only "newer" counts.
+      return state.offline ? !!rec && cmpVer(latestFor(p), rec.version) > 0 : needsUpdate(latestFor(p), rec);
+    }
+
+    // Auto Updates: install whatever the panel shows as out of date, one at
+    // a time (covers releases published after CardMirror started, and the
+    // panel opening before the launch check finished).
+    var autoRunning = false;
+    function runAutoUpdates() {
+      if (autoRunning || !autoUpdatesOn() || state.offline || !state.catalog || !host) return;
+      var m = installed();
+      var due = state.catalog.filter(function (p) {
+        return hasUpdate(p, m[p.id]) && !state.busy[p.id] && !bgUpdating[p.id] && !state.autoFailed[p.id];
+      });
+      if (!due.length) return;
+      autoRunning = true;
+      log('info', 'autoUpdate.panel', { due: due.map(function (p) { return p.id + '@' + latestFor(p); }) });
+      due.reduce(function (chain, p) {
+        return chain.then(function () { return host ? startUpdate(p, true) : null; });
+      }, Promise.resolve()).then(function () { autoRunning = false; }, function () { autoRunning = false; });
+    }
 
     function checkOne(id) {
       var p = byId(id), rec = installed()[id];
@@ -1878,7 +1935,7 @@
       return backend.checkUpdate(p, rec.version).then(function (r) {
         state.latest[id] = r.latest; state.checked[id] = 'ok';
         delete state.checking[id];
-        return cmpVer(r.latest, rec.version) > 0;
+        return needsUpdate(r.latest, rec);
       }).catch(function (e) {
         log('warn', 'update.check.failed', { id: id, error: errInfo(e) });
         state.checked[id] = 'error'; delete state.checking[id]; return null;
@@ -1906,13 +1963,16 @@
         Object.keys(m).forEach(function (id) {
           var p = byId(id); if (!p) return;
           state.latest[id] = p.version; state.checked[id] = 'ok';
-          if (cmpVer(p.version, m[id].version) > 0) n++;
+          if (needsUpdate(p.version, m[id])) n++;
         });
         var added = c.list.filter(function (p) { return before.indexOf(p.id) < 0; }).length;
         log('info', 'update.checkAll', { updates: n, newPlugins: added });
-        toast((n ? n + (n === 1 ? ' update available' : ' updates available') : 'Everything is up to date') +
+        var auto = n && autoUpdatesOn();
+        if (auto) state.autoFailed = {}; // a manual check retries ones that failed
+        toast((n ? (auto ? 'Updating ' + n + (n === 1 ? ' plugin' : ' plugins') + '\u2026' : n + (n === 1 ? ' update available' : ' updates available')) : 'Everything is up to date') +
           (added ? ' \u00b7 ' + added + ' new plugin' + (added === 1 ? '' : 's') : ''));
         render();
+        if (auto) runAutoUpdates();
       });
     }
 
@@ -1989,7 +2049,7 @@
     function spinner() { return '<span class="spin" style="display:inline-flex">' + icon('refresh', 14) + '</span>'; }
 
     function card(p) {
-      var rec = installed()[p.id], busy = state.busy[p.id], hasUpd = hasUpdate(p, rec);
+      var rec = installed()[p.id], busy = state.busy[p.id] || (bgUpdating[p.id] ? 'updating' : null), hasUpd = hasUpdate(p, rec);
       var action;
       if (busy === 'installing' || busy === 'updating') action = '<button class="btn primary" disabled>' + spinner() + (busy === 'installing' ? 'Installing\u2026' : 'Updating\u2026') + '</button>';
       else if (rec && hasUpd) action = '<button class="btn primary" data-act="update" data-id="' + esc(p.id) + '">' + icon('refresh', 14) + 'Update</button>';
@@ -2022,7 +2082,7 @@
       if (!ids.length) return '<div class="empty"><div class="big">' + icon('box', 24) + '</div><b>Nothing installed yet</b>Browse the marketplace to add your first plugin.</div>';
       return '<div class="list">' + ids.map(function (id) {
         var p = byId(id) || { id: id, name: id, tier: 'free', version: m[id].version, description: '' };
-        var rec = m[id], busy = state.busy[id], hasUpd = hasUpdate(p, rec), checking = state.checking[id];
+        var rec = m[id], busy = state.busy[id] || (bgUpdating[id] ? 'updating' : null), hasUpd = hasUpdate(p, rec), checking = state.checking[id];
         var upd = checking ? '<span class="status">' + spinner() + 'Checking for updates\u2026</span>'
           : hasUpd ? '<span class="status warn">' + icon('refresh', 13) + 'Update available: v' + esc(latestFor(p)) + '</span>'
           : state.checked[id] === 'error' ? '<span class="status bad">' + icon('alert', 13) + 'Couldn\u2019t check for updates</span>'
@@ -2080,7 +2140,13 @@
             '<button class="btn danger solid" data-act="unlink-confirm"' + (u.busy ? ' disabled' : '') + '>' + (u.busy ? spinner() + 'Unlinking\u2026' : 'Unlink & uninstall all') + '</button></div>'
           : '<div class="set-actions"><button class="btn danger" data-act="unlink-start">' + icon('trash', 14) + 'Unlink\u2026</button></div>') +
         '</div>';
-      return '<div class="set">' + codeSec + unlinkSec + '</div>';
+      var on = autoUpdatesOn();
+      var autoSec = '<div class="set-sec"><div class="set-row"><div><h3>Auto Updates</h3>' +
+        '<p>' + (on ? 'Installed plugins update themselves when a new version is out. Changes apply after restarting CardMirror.'
+                    : 'Off. Use \u201cCheck for updates\u201d and the Update buttons to update plugins yourself.') + '</p></div>' +
+        '<button class="tog big' + (on ? ' on' : '') + '" data-act="autoupd-toggle" role="switch" aria-checked="' + on + '" aria-label="Auto Updates">' +
+        '<span class="sw"></span></button></div></div>';
+      return '<div class="set">' + autoSec + codeSec + unlinkSec + '</div>';
     }
 
     // ---- render ----
@@ -2165,6 +2231,12 @@
       else if (act === 'tab') { state.view = t.getAttribute('data-v'); state.unlink.confirm = false; render(); }
       else if (act === 'install') startInstall(byId(id));
       else if (act === 'open-plugin') openPlugin(byId(id));
+      else if (act === 'autoupd-toggle') {
+        var au = !autoUpdatesOn(); lsSet('autoUpdates', au); try { api.storage.set('autoUpdates', au); } catch (e2) {}
+        log('info', 'autoUpdate.setting', { on: au });
+        if (au) { state.autoFailed = {}; runAutoUpdates(); }
+        render(); toast(au ? 'Auto Updates on' : 'Auto Updates off');
+      }
       else if (act === 'fab-toggle') {
         var on = !fabEnabled(); sset('fab', on); render();
         toast(on ? 'Floating button on' : 'Floating button off \u2014 open from the command palette');
@@ -2193,7 +2265,9 @@
     root.addEventListener('keypress', function (e) { e.stopPropagation(); });
 
     render();
-    backend.getCatalog().then(function (c) { state.catalog = c.list; state.offline = c.offline; render(); })
+    // Redraw when the background job updates something; then catch anything left.
+    onBgUpdate = function () { if (host) { render(); runAutoUpdates(); } };
+    backend.getCatalog().then(function (c) { state.catalog = c.list; state.offline = c.offline; render(); runAutoUpdates(); })
       .catch(function (e) { log('error', 'catalog.crashed', errInfo(e)); state.loadError = e.message || 'Unknown error'; render(); });
   }
 

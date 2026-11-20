@@ -1077,12 +1077,18 @@
   var CSS = [
     ':host{all:initial}',
     '*{box-sizing:border-box}',
+    // Colors come from CardMirror's own theme variables (--pmd-c-*), so the
+    // panel matches the editor: its light/dark mode and any Themes-plugin
+    // theme. The values after each comma are CardMirror's defaults, used only
+    // if a variable is missing.
     '.scrim{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;',
-    '  background:rgba(8,10,15,.55);backdrop-filter:blur(3px);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;',
-    '  --bg:#ffffff;--bg2:#f5f6f8;--bg3:#eceef2;--fg:#14171f;--muted:#68707f;--line:#e2e5eb;--brand:#27272a;--brand-fg:#fff;',
-    '  --ok:#15803d;--okbg:#dcfce7;--warn:#b45309;--warnbg:#fef3c7;--bad:#b91c1c;--badbg:#fee2e2;--shadow:0 24px 70px rgba(0,0,0,.35)}',
-    '@media (prefers-color-scheme:dark){.scrim{--bg:#171a21;--bg2:#1e222b;--bg3:#272c37;--fg:#eceef3;--muted:#98a1b3;--line:#2c313d;',
-    '  --brand:#e4e4e7;--brand-fg:#18181b;--ok:#4ade80;--okbg:#14301f;--warn:#fbbf24;--warnbg:#33260c;--bad:#f87171;--badbg:#391517}}',
+    '  background:var(--pmd-c-overlay,rgba(0,0,0,.4));backdrop-filter:blur(3px);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;',
+    '  --bg:var(--pmd-c-bg,#fff);--bg2:var(--pmd-c-bg-soft,#f7f7f8);--bg3:var(--pmd-c-hover,#ebebeb);',
+    '  --fg:var(--pmd-c-text,#222);--muted:var(--pmd-c-text-muted,#666);--line:var(--pmd-c-divider,#e0e0e0);',
+    '  --brand:var(--pmd-c-accent,#2563eb);--brand-fg:var(--pmd-c-text-on-accent,#fff);',
+    '  --ok:var(--pmd-c-success,#16a34a);--warn:var(--pmd-c-warning,#b45309);--bad:var(--pmd-c-error,#b00020);',
+    '  --okbg:color-mix(in srgb,var(--ok) 14%,var(--bg));--warnbg:color-mix(in srgb,var(--warn) 14%,var(--bg));--badbg:color-mix(in srgb,var(--bad) 13%,var(--bg));',
+    '  --shadow:0 24px 70px rgba(0,0,0,.35)}',
     '.win{width:min(860px,94vw);height:min(640px,90vh);background:var(--bg);color:var(--fg);border:1px solid var(--line);',
     '  border-radius:16px;box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden}',
     '.win.enter{animation:pop .16s ease-out}',
@@ -1249,10 +1255,10 @@
     r.innerHTML = '<style>' +
       ':host{all:initial}' +
       '.fab{position:fixed;left:16px;bottom:16px;z-index:2147482000;display:flex;align-items:center;gap:8px;height:40px;padding:0 15px 0 12px;' +
-      'border-radius:99px;border:1px solid #d4d4d8;background:#ffffff;color:#18181b;font:600 13px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;' +
+      'border-radius:99px;border:1px solid var(--pmd-c-border,#c8c8c8);background:var(--pmd-c-bg,#fff);color:var(--pmd-c-text,#222);font:600 13px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;' +
       'cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.2);transition:transform .12s,box-shadow .12s}' +
       '.fab:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(0,0,0,.26)}' +
-      '@media (prefers-color-scheme:dark){.fab{background:#1e222b;color:#eceef3;border-color:#2c313d}}' +
+      '.fab:hover{background:var(--pmd-c-hover,#ebebeb)}' +
       '</style><button class="fab" aria-label="Open Plugin Manager" title="Open Plugin Manager">' + icon('store', 16) + 'Plugins</button>';
     r.querySelector('.fab').addEventListener('click', function () { openManager(lastApi || stubApi()); });
     document.body.appendChild(fabHost);

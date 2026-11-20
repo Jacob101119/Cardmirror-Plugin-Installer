@@ -143,8 +143,19 @@
       accent: ['#1e3a8a', '#172554'],
       iconColor: '#ffffff',
       icon: 'gavel',
-      // Command that opens it. TODO: confirm once the plugin's final command is set.
-      openCommand: 'cardmirror-judge-dashboard.open',
+      openCommand: 'cardmirror-judge-dashboard.open', // "Judge Dashboard: Open Dashboard"
+    },
+    {
+      id: 'todo-list',
+      name: 'TODO List',
+      description: 'A task management plugin for creating, organizing, tracking, and completing tasks directly in Cardmirror.',
+      tier: 'free',
+      version: '1.0.0',
+      author: 'Jacob Scherrer',
+      accent: ['#10b981', '#047857'],
+      iconColor: '#ffffff',
+      icon: 'checklist',
+      openCommand: 'cardmirror-todo.openList', // "TODO: Open List"
     },
   ];
 
@@ -1013,6 +1024,8 @@
     file: '<path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7l-4-4zM14 3v4h4"/>',
     star: '<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3z"/>',
     pin: '<path d="M12 17v5"/><path d="M9 3h6l-1 6 3 4H7l3-4-1-6z"/>',
+    checklist: '<circle cx="5" cy="6" r="2.5"/><path d="m3.9 6.1.8.8 1.5-1.6" stroke-width="1.6"/><path d="M10.5 6H20" opacity=".5"/>' +
+      '<circle cx="5" cy="12" r="2.5"/><path d="M10.5 12H20"/><circle cx="5" cy="18" r="2.5"/><path d="M10.5 18H20"/>',
     gavel: '<path d="m14.5 12.5-8 8a2.12 2.12 0 1 1-3-3l8-8"/><path d="m16 16 6-6"/><path d="m8 8 6-6"/><path d="m9 7 8 8"/><path d="m21 11-8-8"/>',
     gauge: '<path d="M5.64 20.36A9 9 0 1 1 20.65 11.52" stroke-width="2.8"/><path d="M20.65 11.52A9 9 0 0 1 18.36 20.36" stroke-width="2.8" opacity=".35"/><path d="M12 14l6.6-1.9" stroke-width="1.8"/><circle cx="12" cy="14" r="2.1" fill="currentColor" stroke="none"/>',
     brush: '<path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/>',

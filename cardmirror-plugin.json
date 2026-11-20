@@ -1,7 +1,7 @@
 {
   "id": "plugin-installer",
   "name": "Plugin Manager",
-  "version": "0.1.23",
+  "version": "0.1.24",
   "description": "Download plugins",
   "author": "Jacob Scherrer",
   "apiVersion": 1,

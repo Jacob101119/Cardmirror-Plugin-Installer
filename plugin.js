@@ -57,7 +57,7 @@
     ],
     PRIMARY_RETRY_MS: 15 * 60 * 1000,
     // One code unlocks the whole store. Where people buy it:
-    STORE_URL: 'https://cardmirror-storefront.pages.dev', // the Cloudflare Pages storefront
+    STORE_URL: 'https://cardmirror-plugin-storefront.pages.dev/#plugins', // where people buy a code
     STORE_PASS_ID: 'all-access', // product_id the licensing Worker uses for the store code // after Cloudflare fails, try the backup first for this long
     // Usage ping + feedback (the CardMirror-Plugin-Admin Worker).
     ADMIN_API: 'https://cardmirror-plugin-admin.jacob-w-scherrer-cloudfare.workers.dev',

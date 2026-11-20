@@ -117,6 +117,18 @@
       icon: 'brush',
       openCommand: 'cardmirror-themes.picker', // "Themes: Choose theme…"
     },
+    {
+      id: 'round-dashboard',
+      name: 'Round Dashboard',
+      description: 'A dedicated dashboard for managing and viewing debate rounds.',
+      tier: 'free',
+      version: '1.0.0',
+      author: 'Jacob Scherrer',
+      accent: ['#0b1220', '#1e293b'],
+      iconColor: '#22d3ee',
+      icon: 'gauge',
+      openCommand: 'cardmirror-round-dashboard.open', // "Round Dashboard: Open Dashboard"
+    },
   ];
 
   // ---------------------------------------------------------------------------
@@ -890,6 +902,7 @@
     file: '<path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7l-4-4zM14 3v4h4"/>',
     star: '<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3z"/>',
     pin: '<path d="M12 17v5"/><path d="M9 3h6l-1 6 3 4H7l3-4-1-6z"/>',
+    gauge: '<path d="M5.64 20.36A9 9 0 1 1 20.65 11.52" stroke-width="2.8"/><path d="M20.65 11.52A9 9 0 0 1 18.36 20.36" stroke-width="2.8" opacity=".35"/><path d="M12 14l6.6-1.9" stroke-width="1.8"/><circle cx="12" cy="14" r="2.1" fill="currentColor" stroke="none"/>',
     brush: '<path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/>',
     puzzle: '<path d="M10 4a2 2 0 1 1 4 0v1h3a1 1 0 0 1 1 1v3h1a2 2 0 1 1 0 4h-1v3a1 1 0 0 1-1 1h-3v-1a2 2 0 1 0-4 0v1H7a1 1 0 0 1-1-1v-3H5a2 2 0 1 1 0-4h1V6a1 1 0 0 1 1-1h3V4z"/>',
     download: '<path d="M12 3v12m0 0 4-4m-4 4-4-4M5 21h14"/>',

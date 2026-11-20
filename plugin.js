@@ -1687,7 +1687,12 @@
     // ---- render ----
     var firstRender = true;
     var KEEP_FOCUS = { q: 1, fbmsg: 1, fbemail: 1 };
+    var renderedView = null;
     function render() {
+      // Redrawing replaces the list, which would jump back to the top; keep
+      // the scroll position unless the user switched tabs.
+      var oldBody = root.querySelector('.body');
+      var keepScroll = oldBody && renderedView === state.view ? oldBody.scrollTop : 0;
       var focused = root.activeElement && root.activeElement.id;
       var caret = null;
       try { caret = KEEP_FOCUS[focused] ? root.activeElement.selectionStart : null; } catch (e) {}
@@ -1720,6 +1725,8 @@
         '</div></div>';
 
       firstRender = false; if (state.modal) state.modal.fresh = false; if (state.diag) state.diag.fresh = false; if (state.browserDl) state.browserDl.fresh = false; if (state.feedback) state.feedback.fresh = false;
+      renderedView = state.view;
+      var nb = root.querySelector('.body'); if (nb && keepScroll) nb.scrollTop = keepScroll;
       var lb = root.querySelector('#logbox'); if (lb) lb.scrollTop = lb.scrollHeight;
       if (KEEP_FOCUS[focused]) {
         var el = root.querySelector('#' + focused);

@@ -55,7 +55,10 @@
       // can't be reached or errors. Premium licensing stays on Cloudflare.
       'https://cardmirror-vercel-downloads.vercel.app',
     ],
-    PRIMARY_RETRY_MS: 15 * 60 * 1000, // after Cloudflare fails, try the backup first for this long
+    PRIMARY_RETRY_MS: 15 * 60 * 1000,
+    // One code unlocks the whole store. Where people buy it:
+    STORE_URL: 'https://cardmirror-storefront.pages.dev', // the Cloudflare Pages storefront
+    STORE_PASS_ID: 'all-access', // product_id the licensing Worker uses for the store code // after Cloudflare fails, try the backup first for this long
     // Usage ping + feedback (the CardMirror-Plugin-Admin Worker).
     ADMIN_API: 'https://cardmirror-plugin-admin.jacob-w-scherrer-cloudfare.workers.dev',
     USAGE_PING: true,              // anonymous check-in, at most every 12h
@@ -756,6 +759,18 @@
         body: backend._body(plugin, licenseKey, deviceId),
       });
     },
+    // Link the store code to this device (also checks it's a valid code).
+    linkCode: function (code, deviceId) {
+      return backend.activate({ id: CONFIG.STORE_PASS_ID }, code, deviceId);
+    },
+    // Free the code from this device so it can be used on another computer.
+    unlinkCode: function (code, deviceId) {
+      return request('/deactivate', {
+        primaryOnly: true,
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ license: code, device_id: deviceId }),
+      });
+    },
     installPremium: function (plugin, deviceId, licenseKey) {
       return request('/download', {
         primaryOnly: true,
@@ -1027,6 +1042,7 @@
     pin: '<path d="M12 17v5"/><path d="M9 3h6l-1 6 3 4H7l3-4-1-6z"/>',
     checklist: '<circle cx="5" cy="6" r="2.5"/><path d="m3.9 6.1.8.8 1.5-1.6" stroke-width="1.6"/><path d="M10.5 6H20" opacity=".5"/>' +
       '<circle cx="5" cy="12" r="2.5"/><path d="M10.5 12H20"/><circle cx="5" cy="18" r="2.5"/><path d="M10.5 18H20"/>',
+    gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
     gavel: '<path d="m14.5 12.5-8 8a2.12 2.12 0 1 1-3-3l8-8"/><path d="m16 16 6-6"/><path d="m8 8 6-6"/><path d="m9 7 8 8"/><path d="m21 11-8-8"/>',
     gauge: '<path d="M5.64 20.36A9 9 0 1 1 20.65 11.52" stroke-width="2.8"/><path d="M20.65 11.52A9 9 0 0 1 18.36 20.36" stroke-width="2.8" opacity=".35"/><path d="M12 14l6.6-1.9" stroke-width="1.8"/><circle cx="12" cy="14" r="2.1" fill="currentColor" stroke="none"/>',
     brush: '<path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/>',
@@ -1151,6 +1167,23 @@
     '.logbox{width:100%;height:300px;resize:vertical;padding:10px;border-radius:10px;border:1px solid var(--line);background:var(--bg2);color:var(--fg);font:11px/1.45 ui-monospace,Menlo,Consolas,monospace;white-space:pre;outline:0}',
     '.verdict{margin:0 0 12px;padding:10px 14px;border-radius:10px;background:var(--bg2);border:1px solid var(--line);font-size:12.5px;line-height:1.5}',
     '.toast.bad svg{color:#f87171}',
+    '.gate{max-width:420px;margin:28px auto 0;text-align:center}',
+    '.gate .big{width:56px;height:56px;border-radius:16px;background:var(--bg2);display:grid;place-items:center;margin:0 auto 14px}',
+    '.gate h2{margin:0 0 6px;font-size:18px}',
+    '.gate p{margin:0 0 18px;font-size:13px;color:var(--muted);line-height:1.5}',
+    '.gate .input{text-align:center;font-size:16px}',
+    '.gate .wide{width:100%;justify-content:center;margin-top:12px;padding:10px 13px}',
+    '.gate .err{text-align:left}',
+    '.set{max-width:600px}',
+    '.set-sec{border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:14px}',
+    '.set-sec h3{margin:0 0 4px;font-size:14px}',
+    '.set-sec p{margin:0;font-size:12.5px;color:var(--muted);line-height:1.5}',
+    '.set-sec.danger h3{color:var(--bad)}',
+    '.codebox{display:flex;gap:8px;align-items:center;margin-top:12px}',
+    '.codebox code{flex:1;font-size:15px;letter-spacing:.08em;padding:9px 12px;background:var(--bg2);border:1px solid var(--line);border-radius:10px;word-break:normal}',
+    '.warnbox{margin-top:12px;padding:12px 14px;border-radius:10px;background:var(--badbg);color:var(--bad);font-size:12.5px;line-height:1.5}',
+    '.set-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}',
+    '.btn.danger.solid{background:var(--bad);color:#fff;border-color:transparent}',
     '.input.plain{font-family:inherit;letter-spacing:normal;font-size:13px}',
     'textarea.input{resize:vertical;min-height:96px;line-height:1.45}',
     '.steps{margin:0 0 12px;padding-left:20px;font-size:13px;line-height:1.6}',
@@ -1238,7 +1271,8 @@
       checking: {},        // id -> true while an update check runs
       latest: {},          // id -> newest version found by a check
       checked: {},         // id -> 'ok' | 'error' after a check
-      modal: null,         // { plugin, error, loading, key }
+      gate: { code: '', loading: false, error: null }, // code entry screen
+      unlink: { confirm: false, busy: false, show: false }, // Settings
       diag: null,          // { running, verdict } while the diagnostics view is open
       browserDl: null,     // { plugin, reason, error, loading } browser-download fallback
       toast: null,
@@ -1263,9 +1297,13 @@
     // One key for the whole store. Older per-plugin keys still work for
     // their own plugin.
     function storeKey() { return sget('storeKey', null); }
-    function keyFor(p) { return storeKey() || licenses()[p.id] || null; }
     function setStoreKey(k) { sset('storeKey', k); }
-    function keyHint(k) { return '\u2022\u2022\u2022\u2022 ' + String(k || '').slice(-4); }
+    // Accepts the code typed any way (lowercase, spaces, no dashes).
+    function normalizeCode(v) {
+      var raw = String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      return raw.length === 16 ? raw.match(/.{4}/g).join('-') : String(v || '').trim().toUpperCase();
+    }
+    function maskCode(k) { return String(k || '').replace(/[A-Z0-9](?=[A-Z0-9-]*-[A-Z0-9]{4}$)/g, '\u2022'); }
     var LICENSE_CODES = { invalid: 1, wrongproduct: 1, expired: 1, revoked: 1, bound: 1 };
 
     // Persist + run a downloaded bundle, then record it as installed.
@@ -1299,7 +1337,8 @@
         if (state.diag) closeDiag();
         else if (state.feedback) { if (!state.feedback.sending) { state.feedback = null; render(); } }
         else if (state.browserDl) { if (!state.browserDl.loading) { state.browserDl = null; render(); } }
-        else if (state.modal) { state.modal = null; render(); } else close();
+        else if (state.unlink.confirm && !state.unlink.busy) { state.unlink.confirm = false; render(); }
+        else close();
       }
     }
     document.addEventListener('keydown', onKey, true);
@@ -1435,39 +1474,28 @@
         : 'Couldn\u2019t open ' + p.name + ' \u2014 restart CardMirror, then try again', true);
     }
 
-    // Activate the key for this plugin on this device, download it, and save
-    // the key as the store key so other paid plugins install without asking.
+    // Plugins served behind the code: activate it for this plugin on this
+    // device, then download with it.
     function premiumInstall(p, key) {
       var dev = deviceId();
       return backend.activate(p, key, dev).then(function () {
         log('info', 'license.activated', { id: p.id });
         return backend.installPremium(p, dev, key);
-      }).then(function (r) {
-        setStoreKey(key);
-        return applyInstall(p, r, { license: { status: 'active', hint: keyHint(key) } });
-      });
-    }
-
-    function openKeyModal(p, error) {
-      state.modal = { plugin: p, error: error || null, loading: false, key: '', fresh: true };
-      render();
+      }).then(function (r) { return applyInstall(p, r); });
     }
 
     function startInstall(p) {
+      if (!storeKey()) { state.view = 'gate'; render(); return; }
       if (p.tier === 'premium') {
-        var saved = keyFor(p);
-        if (!saved) { openKeyModal(p); return; }
         state.busy[p.id] = 'installing'; render();
-        log('info', 'install.start', { id: p.id, tier: 'premium', version: p.version, savedKey: true });
-        premiumInstall(p, saved).then(function (mode) {
+        log('info', 'install.start', { id: p.id, tier: 'premium', version: p.version });
+        premiumInstall(p, storeKey()).then(function (mode) {
           log('info', 'install.ok', { id: p.id, mode: mode });
           delete state.busy[p.id]; toast(p.name + (mode === 'restart' ? ' installed \u2014 restart CardMirror to activate' : ' installed')); render();
         }).catch(function (e) {
-          log('error', 'install.failed', { id: p.id, tier: 'premium', savedKey: true, error: errInfo(e) });
+          log('error', 'install.failed', { id: p.id, tier: 'premium', error: errInfo(e) });
           delete state.busy[p.id];
-          // The saved key doesn't cover this plugin (or stopped working): ask for one.
-          if (LICENSE_CODES[e.code]) { openKeyModal(p, 'Your saved key: ' + errorMessage(e)); return; }
-          toast('Install failed: ' + errorMessage(e), true); render();
+          toast('Install failed: ' + errorMessage(e) + (LICENSE_CODES[e.code] ? ' Check your code in Settings.' : ''), true); render();
         });
         return;
       }
@@ -1484,31 +1512,66 @@
       });
     }
 
-    function submitLicense() {
-      var mo = state.modal; if (!mo || mo.loading) return;
-      var input = root.querySelector('#lic');
-      mo.key = input ? input.value.trim() : mo.key;
-      mo.loading = true; mo.error = null; render();
-      var p = mo.plugin;
-      var key = mo.key.toUpperCase();
-      if (!key) { mo.loading = false; mo.error = 'Enter your key.'; render(); return; }
-      log('info', 'install.start', { id: p.id, tier: 'premium', version: p.version, keyChars: key.length });
-      premiumInstall(p, key).then(function (mode) {
-        log('info', 'install.ok', { id: p.id, mode: mode });
-        state.modal = null; toast(p.name + (mode === 'restart' ? ' installed \u2014 restart CardMirror to activate' : ' installed')); render();
+    // ---- the store code ----
+    function submitCode() {
+      var g = state.gate; if (g.loading) return;
+      var input = root.querySelector('#code');
+      var code = normalizeCode(input ? input.value : g.code);
+      g.code = code; g.error = null;
+      if (!code) { g.error = 'Enter your code.'; render(); return; }
+      g.loading = true; render();
+      log('info', 'code.link.start', { chars: code.length });
+      backend.linkCode(code, deviceId()).then(function () {
+        setStoreKey(code); sset('codeLinkedAt', Date.now());
+        log('info', 'code.linked');
+        state.gate = { code: '', loading: false, error: null };
+        state.view = 'browse';
+        toast('Code linked to this computer'); render();
       }).catch(function (e) {
-        log('error', 'install.failed', { id: p.id, tier: 'premium', error: errInfo(e) });
-        mo.loading = false; mo.error = errorMessage(e); render();
+        log('error', 'code.link.failed', errInfo(e));
+        g.loading = false;
+        g.error = e.code === 'wrongproduct'
+          ? 'That\u2019s a single-plugin key, not a CardMirror Plugins code.'
+          : errorMessage(e);
+        render();
+      });
+    }
+
+    // Unlink the code from this device and uninstall every plugin.
+    function unlinkAndUninstall() {
+      var u = state.unlink; if (u.busy) return;
+      var code = storeKey(); u.busy = true; render();
+      var ids = Object.keys(installed());
+      log('info', 'code.unlink.start', { plugins: ids.length });
+      var serverDone = code
+        ? backend.unlinkCode(code, deviceId()).then(function () { return true; }, function (e) {
+            log('warn', 'code.unlink.serverFailed', errInfo(e));
+            // Already linked elsewhere / unknown: nothing to free here.
+            return !isConnErr(e) && e.status !== 500;
+          })
+        : Promise.resolve(true);
+      serverDone.then(function (freed) {
+        ids.forEach(function (id) { forgetManagedPlugin(id); });
+        lsSet('bundles', {}); setInstalled({});
+        sset('licenses', {}); setStoreKey(null); sset('codeLinkedAt', null);
+        state.latest = {}; state.checked = {}; state.busy = {};
+        state.unlink = { confirm: false, busy: false };
+        state.view = 'gate';
+        log('info', 'code.unlinked', { uninstalled: ids.length, serverFreed: freed });
+        toast(freed
+          ? 'Code unlinked' + (ids.length ? ' \u00b7 ' + ids.length + ' plugin' + (ids.length === 1 ? '' : 's') + ' uninstalled (restart CardMirror to finish)' : '')
+          : 'Removed from this computer, but the server couldn\u2019t be reached \u2014 contact the developer to free your code', !freed);
+        render();
       });
     }
 
     function errorMessage(e) {
       var map = {
-        invalid: 'That key isn\u2019t valid.',
-        wrongproduct: 'That key doesn\u2019t include this plugin.',
-        expired: 'This license has expired.',
-        revoked: 'This license has been revoked.',
-        bound: 'This license is already activated on another device.',
+        invalid: 'That code isn\u2019t valid.',
+        wrongproduct: 'Your code doesn\u2019t include this plugin.',
+        expired: 'This code has expired.',
+        revoked: 'This code has been turned off.',
+        bound: 'This code is already linked to another computer. Unlink it there (Settings), or contact the developer.',
         network: 'Couldn\u2019t reach the plugin server. Check your connection, or open Diagnostics (bottom-left) to find out why.',
         timeout: 'The plugin server took too long to answer. Open Diagnostics (bottom-left) for details.',
         filtered: 'This network seems to be blocking the plugin server (a web filter answered instead). Open Diagnostics (bottom-left) for details.',
@@ -1531,7 +1594,7 @@
       p = Object.assign({}, p, { version: latestFor(p) });
       var run;
       if (p.tier === 'premium') {
-        var key = keyFor(p);
+        var key = storeKey() || licenses()[p.id];
         run = key ? backend.installPremium(p, deviceId(), key)
                   : Promise.reject(Object.assign(new Error('No saved license'), { code: 'invalid' }));
       } else run = backend.installFree(p);
@@ -1678,7 +1741,6 @@
       var a = p.accent || ['#52525b', '#a1a1aa'];
       return '<div class="tile" style="background:linear-gradient(135deg,' + esc(a[0]) + ',' + esc(a[1]) + ')' + (p.iconColor ? ';color:' + esc(p.iconColor) : '') + '">' + icon(p.icon || 'puzzle', size || 24) + '</div>';
     }
-    function tierTag(p) { return '<span class="tag ' + esc(p.tier) + '">' + (p.tier === 'premium' ? 'PAID' : 'Free') + '</span>'; }
     function spinner() { return '<span class="spin" style="display:inline-flex">' + icon('refresh', 14) + '</span>'; }
 
     function card(p) {
@@ -1687,17 +1749,14 @@
       if (busy === 'installing' || busy === 'updating') action = '<button class="btn primary" disabled>' + spinner() + (busy === 'installing' ? 'Installing\u2026' : 'Updating\u2026') + '</button>';
       else if (rec && hasUpd) action = '<button class="btn primary" data-act="update" data-id="' + esc(p.id) + '">' + icon('refresh', 14) + 'Update</button>';
       else if (rec) action = '<button class="btn" disabled>' + icon('check', 14) + 'Installed</button>';
-      else {
-        var needsKey = p.tier === 'premium' && !keyFor(p);
-        action = '<button class="btn primary" data-act="install" data-id="' + esc(p.id) + '">' + icon(needsKey ? 'key' : 'download', 14) + (needsKey ? 'Install\u2026' : 'Install') + '</button>';
-      }
+      else action = '<button class="btn primary" data-act="install" data-id="' + esc(p.id) + '">' + icon('download', 14) + 'Install</button>';
       var status = rec
         ? '<span class="status ok">' + icon('check', 13) + 'Installed v' + esc(rec.version) + (p.openCommand ? ' \u00b7 click to open' : '') + '</span>'
         : '<span class="status">Not installed</span>';
       var openable = rec && p.openCommand && !busy;
       return '<div class="card' + (openable ? ' openable' : '') + '"' +
         (openable ? ' data-act="open-plugin" data-id="' + esc(p.id) + '" title="Open ' + esc(p.name) + '"' : '') + '><div class="row">' + tile(p) +
-        '<div><div class="name">' + esc(p.name) + tierTag(p) + '</div><div class="meta">v' + esc(p.version) + ' \u00b7 ' + esc(p.author || '') + '</div></div></div>' +
+        '<div><div class="name">' + esc(p.name) + '</div><div class="meta">v' + esc(p.version) + ' \u00b7 ' + esc(p.author || '') + '</div></div></div>' +
         '<div class="desc">' + esc(p.description) + '</div>' +
         '<div class="foot">' + status + '<span class="grow"></span>' + action + '</div></div>';
     }
@@ -1719,13 +1778,6 @@
       return '<div class="list">' + ids.map(function (id) {
         var p = byId(id) || { id: id, name: id, tier: 'free', version: m[id].version, description: '' };
         var rec = m[id], busy = state.busy[id], hasUpd = hasUpdate(p, rec), checking = state.checking[id];
-        var lic = '';
-        if (p.tier === 'premium') {
-          var l = rec.license || {};
-          lic = l.status === 'active'
-            ? '<span class="status ok">' + icon('key', 13) + 'License active ' + esc(l.hint || '') + '</span>'
-            : '<span class="status bad">' + icon('lock', 13) + (l.status === 'expired' ? 'License expired' : l.status === 'revoked' ? 'License revoked' : l.status === 'bound' ? 'License bound to another device' : 'License needed') + '</span>';
-        }
         var upd = checking ? '<span class="status">' + spinner() + 'Checking for updates\u2026</span>'
           : hasUpd ? '<span class="status warn">' + icon('refresh', 13) + 'Update available: v' + esc(latestFor(p)) + '</span>'
           : state.checked[id] === 'error' ? '<span class="status bad">' + icon('alert', 13) + 'Couldn\u2019t check for updates</span>'
@@ -1739,27 +1791,51 @@
         var openable = p.openCommand && !busy;
         return '<div class="item' + (openable ? ' openable' : '') + '"' +
           (openable ? ' data-act="open-plugin" data-id="' + esc(id) + '" title="Open ' + esc(p.name) + '"' : '') + '>' + tile(p, 22) +
-          '<div class="info"><div class="name">' + esc(p.name) + tierTag(p) + '</div>' +
+          '<div class="info"><div class="name">' + esc(p.name) + '</div>' +
           '<div class="meta">Installed v' + esc(rec.version) + (rec.needsRestart && loadedThisSession[id] ? ' \u00b7 restart CardMirror to apply' : '') + '</div>' +
-          '<div style="display:flex;gap:14px;margin-top:6px;flex-wrap:wrap">' + upd + lic + '</div></div>' +
+          '<div style="display:flex;gap:14px;margin-top:6px;flex-wrap:wrap">' + upd + '</div></div>' +
           '<div class="acts">' + acts + '</div></div>';
       }).join('') + '</div>';
     }
 
-    function modalView() {
-      var mo = state.modal; if (!mo) return '';
-      var p = mo.plugin;
-      return '<div class="modalscrim" data-act="modal-bg"><div class="modal' + (mo.fresh ? ' enter' : '') + '">' +
-        '<div class="row" style="align-items:center;margin-bottom:14px">' + tile(p, 22).replace('width:48px', '') + '<div><h2>Unlock ' + esc(p.name) + '</h2></div></div>' +
-        '<p>Enter your CardMirror Plugins key. One key unlocks every paid plugin, and it\u2019s saved on this device so you won\u2019t need to enter it again.</p>' +
-        '<label class="field" for="lic">Plugins key</label>' +
-        '<input id="lic" class="input" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false" value="' + esc(mo.key) + '"' + (mo.loading ? ' disabled' : '') + '>' +
-        (mo.error ? '<div class="err">' + icon('alert', 15) + esc(mo.error) + '</div>' : '') +
-        '<div class="hint">Don\u2019t have a key? <a href="https://www.google.com" target="_blank" rel="noopener noreferrer">Get one</a>.</div>' +
-        '<div class="hint">Keys work on one device. Need to move yours? <a href="mailto:jacobscardmirrorplugins@gmail.com">Contact</a> the developer for a reset.</div>' +
-        '<div class="mfoot"><button class="btn" data-act="modal-cancel"' + (mo.loading ? ' disabled' : '') + '>Cancel</button>' +
-        '<button class="btn primary" data-act="modal-submit"' + (mo.loading ? ' disabled' : '') + '>' + (mo.loading ? spinner() + 'Activating\u2026' : 'Unlock &amp; install') + '</button></div>' +
-        '</div></div>';
+    function storeLink(label) {
+      return CONFIG.STORE_URL
+        ? '<a href="' + esc(CONFIG.STORE_URL) + '" target="_blank" rel="noopener noreferrer">' + label + '</a>'
+        : '<a href="mailto:jacobscardmirrorplugins@gmail.com?subject=' + encodeURIComponent('CardMirror Plugins code') + '">' + label + '</a>';
+    }
+
+    // Shown until a code is linked: the store stays hidden behind it.
+    function gateView() {
+      var g = state.gate, dis = g.loading ? ' disabled' : '';
+      return '<div class="gate"><div class="big">' + icon('key', 26) + '</div>' +
+        '<h2>Enter your CardMirror Plugins code</h2>' +
+        '<p>One code unlocks every plugin in the store. It\u2019s saved on this computer, so you only enter it once.</p>' +
+        '<input id="code" class="input" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false" value="' + esc(g.code) + '"' + dis + '>' +
+        (g.error ? '<div class="err">' + icon('alert', 15) + '<span>' + esc(g.error) + '</span></div>' : '') +
+        '<button class="btn primary wide" data-act="code-submit"' + dis + '>' + (g.loading ? spinner() + 'Checking\u2026' : 'Unlock plugins') + '</button>' +
+        '<div class="hint" style="margin-top:14px">Don\u2019t have a code? ' + storeLink('Get one here') + '.</div>' +
+        '<div class="hint">A code works on one computer at a time. To move it, unlink it in Settings on the old computer.</div>' +
+        '</div>';
+    }
+
+    function settingsView() {
+      var code = storeKey(), u = state.unlink, n = Object.keys(installed()).length;
+      var linkedAt = sget('codeLinkedAt', null);
+      var codeSec = '<div class="set-sec"><h3>Your code</h3>' +
+        '<p>Linked to this computer' + (linkedAt ? ' since ' + esc(new Date(linkedAt).toLocaleDateString()) : '') + '. It unlocks every plugin in the store.</p>' +
+        '<div class="codebox"><code>' + esc(u.show ? code : maskCode(code)) + '</code>' +
+        '<button class="btn" data-act="code-show">' + (u.show ? 'Hide' : 'Show') + '</button>' +
+        '<button class="btn" data-act="code-copy">Copy</button></div></div>';
+      var unlinkSec = '<div class="set-sec danger"><h3>Unlink code from this computer</h3>' +
+        '<p>Frees your code so you can use it on another computer.</p>' +
+        (u.confirm
+          ? '<div class="warnbox"><b>This will uninstall all ' + n + ' plugin' + (n === 1 ? '' : 's') + ' from this computer</b> and remove your code. ' +
+            'Their saved settings are deleted too. You can link the code again later on this or another computer.</div>' +
+            '<div class="set-actions"><button class="btn" data-act="unlink-cancel"' + (u.busy ? ' disabled' : '') + '>Cancel</button>' +
+            '<button class="btn danger solid" data-act="unlink-confirm"' + (u.busy ? ' disabled' : '') + '>' + (u.busy ? spinner() + 'Unlinking\u2026' : 'Unlink & uninstall all') + '</button></div>'
+          : '<div class="set-actions"><button class="btn danger" data-act="unlink-start">' + icon('trash', 14) + 'Unlink\u2026</button></div>') +
+        '</div>';
+      return '<div class="set">' + codeSec + unlinkSec + '</div>';
     }
 
     function diagView() {
@@ -1781,7 +1857,7 @@
 
     // ---- render ----
     var firstRender = true;
-    var KEEP_FOCUS = { q: 1, fbmsg: 1, fbemail: 1 };
+    var KEEP_FOCUS = { q: 1, fbmsg: 1, fbemail: 1, code: 1 };
     var renderedView = null;
     function render() {
       // Redrawing replaces the list, which would jump back to the top; keep
@@ -1792,36 +1868,42 @@
       var caret = null;
       try { caret = KEEP_FOCUS[focused] ? root.activeElement.selectionStart : null; } catch (e) {}
       var count = Object.keys(installed()).length;
-      var body = state.view === 'browse' ? browseView() : installedView();
-
-      root.innerHTML = '<style>' + CSS + '</style>' +
-        '<div class="scrim" data-act="bg"><div class="win' + (firstRender ? ' enter' : '') + '" role="dialog" aria-label="Plugin Manager">' +
-        '<header>' +
-        '<div><h1>Plugin Manager</h1><div class="sub">Browse, install and manage CardMirror plugins</div></div>' +
-        '<span class="grow"></span><button class="iconbtn" data-act="close" aria-label="Close">' + icon('x', 18) + '</button></header>' +
-        '<div class="bar"><div class="tabs">' +
+      var gated = !storeKey();
+      if (gated) state.view = 'gate';
+      else if (state.view === 'gate') state.view = 'browse';
+      var body = gated ? gateView() : state.view === 'settings' ? settingsView() : state.view === 'browse' ? browseView() : installedView();
+      var bar = gated ? '' : '<div class="bar"><div class="tabs">' +
         '<button class="tab ' + (state.view === 'browse' ? 'on' : '') + '" data-act="tab" data-v="browse">' + icon('store', 14) + 'Browse</button>' +
-        '<button class="tab ' + (state.view === 'installed' ? 'on' : '') + '" data-act="tab" data-v="installed">' + icon('box', 14) + 'Installed' + (count ? '<span class="pill">' + count + '</span>' : '') + '</button></div>' +
-        (state.view === 'browse'
+        '<button class="tab ' + (state.view === 'installed' ? 'on' : '') + '" data-act="tab" data-v="installed">' + icon('box', 14) + 'Installed' + (count ? '<span class="pill">' + count + '</span>' : '') + '</button>' +
+        '<button class="tab ' + (state.view === 'settings' ? 'on' : '') + '" data-act="tab" data-v="settings">' + icon('gear', 14) + 'Settings</button></div>' +
+        (state.view === 'settings' ? '' : state.view === 'browse'
           ? '<div class="search">' + icon('search', 15) + '<input id="q" placeholder="Search plugins\u2026" value="' + esc(state.query) + '"></div>' +
             '<button class="btn" data-act="check-all"' + (state.checkingAll ? ' disabled' : '') + '>' +
             (state.checkingAll ? spinner() : icon('refresh', 14)) + 'Check for updates</button>'
           : '<span class="grow"></span><button class="btn" data-act="check-all"' +
             (state.checkingAll || Object.keys(state.checking).length || !Object.keys(installed()).length ? ' disabled' : '') + '>' +
             (state.checkingAll || Object.keys(state.checking).length ? spinner() : icon('refresh', 14)) + 'Check all for updates</button>') +
-        '</div><div class="body">' +
-        (state.offline ? '<div class="banner">' + icon('alert', 15) + '<span>Couldn\u2019t reach the plugin server \u2014 showing the last saved catalog. Installing needs a connection. ' +
+        '</div>';
+
+      root.innerHTML = '<style>' + CSS + '</style>' +
+        '<div class="scrim" data-act="bg"><div class="win' + (firstRender ? ' enter' : '') + '" role="dialog" aria-label="Plugin Manager">' +
+        '<header>' +
+        '<div><h1>Plugin Manager</h1><div class="sub">Browse, install and manage CardMirror plugins</div></div>' +
+        '<span class="grow"></span><button class="iconbtn" data-act="close" aria-label="Close">' + icon('x', 18) + '</button></header>' +
+        bar +
+        '<div class="body">' +
+        (state.offline && !gated && state.view !== 'settings' ? '<div class="banner">' + icon('alert', 15) + '<span>Couldn\u2019t reach the plugin server \u2014 showing the last saved catalog. Installing needs a connection. ' +
           '<button class="linkbtn" style="color:inherit;font-size:inherit" data-act="diag">Open Diagnostics</button></span></div>' : '') +
         body + '</div>' +
         '<footer><span style="display:flex;gap:14px"><button class="linkbtn" data-act="feedback">Send feedback</button><button class="linkbtn" data-act="diag">Diagnostics</button>' +
-          (storeKey() ? '<button class="linkbtn" data-act="forget-key" title="Remove the saved plugins key from this computer">Key ' + esc(keyHint(storeKey())) + ' \u00b7 forget</button>' : '') +
           '</span><span class="mid">Contact developer \u2013 <a href="mailto:jacobscardmirrorplugins@gmail.com">jacobscardmirrorplugins@gmail.com</a></span>' +
         '<button class="tog ' + (fabEnabled() ? 'on' : '') + '" data-act="fab-toggle" role="switch" aria-checked="' + fabEnabled() + '">Floating button<span class="sw"></span></button></footer>' +
-        modalView() + browserDlView() + feedbackView() + diagView() +
+        browserDlView() + feedbackView() + diagView() +
         (state.toast ? '<div class="toast' + (state.toastBad ? ' bad' : '') + '">' + icon(state.toastBad ? 'x' : 'check', 15) + esc(state.toast) + '</div>' : '') +
         '</div></div>';
 
-      firstRender = false; if (state.modal) state.modal.fresh = false; if (state.diag) state.diag.fresh = false; if (state.browserDl) state.browserDl.fresh = false; if (state.feedback) state.feedback.fresh = false;
+      var wasFirst = firstRender;
+      firstRender = false; if (state.diag) state.diag.fresh = false; if (state.browserDl) state.browserDl.fresh = false; if (state.feedback) state.feedback.fresh = false;
       renderedView = state.view;
       var nb = root.querySelector('.body'); if (nb && keepScroll) nb.scrollTop = keepScroll;
       var lb = root.querySelector('#logbox'); if (lb) lb.scrollTop = lb.scrollHeight;
@@ -1829,7 +1911,7 @@
         var el = root.querySelector('#' + focused);
         if (el && !el.disabled) { el.focus(); try { if (caret != null) el.setSelectionRange(caret, caret); } catch (e) {} }
       }
-      if (state.modal && !state.modal.loading) { var l = root.querySelector('#lic'); if (l) { l.focus(); l.setSelectionRange(l.value.length, l.value.length); } }
+      if (gated && wasFirst) { var ci = root.querySelector('#code'); if (ci) ci.focus(); }
     }
 
     // ---- events (delegated) ----
@@ -1837,7 +1919,12 @@
       var t = e.target.closest('[data-act]'); if (!t) return;
       var act = t.getAttribute('data-act'), id = t.getAttribute('data-id');
       if (act === 'bg') { if (e.target === t) close(); return; }
-      if (act === 'modal-bg') { if (e.target === t && !state.modal.loading) { state.modal = null; render(); } return; }
+      if (act === 'code-submit') { submitCode(); return; }
+      if (act === 'code-show') { state.unlink.show = !state.unlink.show; render(); return; }
+      if (act === 'code-copy') { copyText(storeKey() || '', 'Code copied'); return; }
+      if (act === 'unlink-start') { state.unlink.confirm = true; render(); return; }
+      if (act === 'unlink-cancel') { state.unlink.confirm = false; render(); return; }
+      if (act === 'unlink-confirm') { unlinkAndUninstall(); return; }
       if (act === 'diag-bg') { if (e.target === t) closeDiag(); return; }
       if (act === 'bd-bg') { if (e.target === t && !state.browserDl.loading) { state.browserDl = null; render(); } return; }
       if (act === 'bd-cancel') { state.browserDl = null; render(); return; }
@@ -1854,13 +1941,8 @@
       if (act === 'diag-copy') { copyDiag(); return; }
       if (act === 'diag-clear') { clearLog(); render(); toast('Log cleared'); return; }
       if (act === 'close') close();
-      else if (act === 'tab') { state.view = t.getAttribute('data-v'); render(); }
+      else if (act === 'tab') { state.view = t.getAttribute('data-v'); state.unlink.confirm = false; render(); }
       else if (act === 'install') startInstall(byId(id));
-      else if (act === 'forget-key') {
-        sset('storeKey', null); sset('licenses', {});
-        log('info', 'license.forgotten');
-        toast('Key removed from this computer. Installed plugins keep working.'); render();
-      }
       else if (act === 'open-plugin') openPlugin(byId(id));
       else if (act === 'fab-toggle') {
         var on = !fabEnabled(); sset('fab', on); render();
@@ -1870,8 +1952,6 @@
       else if (act === 'check-all') checkAll();
       else if (act === 'update') startUpdate(byId(id) || { id: id });
       else if (act === 'uninstall') uninstall(byId(id) || { id: id, name: id });
-      else if (act === 'modal-cancel') { state.modal = null; render(); }
-      else if (act === 'modal-submit') submitLicense();
     });
     root.addEventListener('change', function (e) {
       if (e.target.id === 'bdfile' && e.target.files && e.target.files[0]) importFromFile(e.target.files[0]);
@@ -1881,11 +1961,11 @@
       if (e.target.id === 'fbmsg' && state.feedback) state.feedback.message = e.target.value;
       if (e.target.id === 'fbemail' && state.feedback) state.feedback.email = e.target.value;
       if (e.target.id === 'q') { state.query = e.target.value; render(); }
-      if (e.target.id === 'lic' && state.modal) state.modal.key = e.target.value;
+      if (e.target.id === 'code') state.gate.code = e.target.value;
     });
     root.addEventListener('keydown', function (e) {
       e.stopPropagation(); // keep editor hotkeys from firing while typing here
-      if (e.key === 'Enter' && e.target.id === 'lic') submitLicense();
+      if (e.key === 'Enter' && e.target.id === 'code') submitCode();
     });
     root.addEventListener('keyup', function (e) { e.stopPropagation(); });
     root.addEventListener('keypress', function (e) { e.stopPropagation(); });

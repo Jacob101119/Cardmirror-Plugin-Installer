@@ -1378,6 +1378,9 @@
     '.win{width:min(860px,94vw);height:min(640px,90vh);background:var(--bg);color:var(--fg);border:1px solid var(--line);',
     '  border-radius:16px;box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden}',
     '.win.enter{animation:pop .16s ease-out}',
+    // No text highlighting in the panel; typing fields still select normally.
+    '.scrim{-webkit-user-select:none;user-select:none}',
+    'input,textarea,select{-webkit-user-select:text;user-select:text}',
     '@keyframes pop{from{transform:scale(.97);opacity:0}to{transform:none;opacity:1}}',
     'header{display:flex;align-items:center;gap:12px;padding:16px 20px 0}',
     '.logo{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:#fff;background:linear-gradient(135deg,#3f3f46,#71717a)}',
@@ -1548,7 +1551,7 @@
     var r = fabHost.attachShadow({ mode: 'open' });
     r.innerHTML = '<style>' +
       ':host{all:initial}' +
-      '.fab{position:fixed;left:16px;bottom:16px;z-index:2147482000;display:flex;align-items:center;gap:8px;height:40px;padding:0 15px 0 12px;' +
+      '.fab{-webkit-user-select:none;user-select:none;position:fixed;left:16px;bottom:16px;z-index:2147482000;display:flex;align-items:center;gap:8px;height:40px;padding:0 15px 0 12px;' +
       'border-radius:99px;border:1px solid var(--pmd-c-border,#c8c8c8);background:var(--pmd-c-bg,#fff);color:var(--pmd-c-text,#222);font:600 13px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;' +
       'cursor:pointer;box-shadow:0 6px 20px rgba(0,0,0,.2);transition:transform .12s,box-shadow .12s}' +
       '.fab:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(0,0,0,.26)}' +

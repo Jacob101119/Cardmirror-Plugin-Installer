@@ -69,7 +69,9 @@
     //                       catalog + free downloads only, errors are HTTP 200
     //                       with { error }, and it has daily quotas.
     PROVIDERS: [
-      { id: 'cloudflare', name: 'Cloudflare', type: 'worker', licensing: true,
+      // postFallback: when a filter redirects GETs to a sign-in page (Securly
+      // does this), ask for the catalog/downloads with POST instead.
+      { id: 'cloudflare', name: 'Cloudflare', type: 'worker', licensing: true, postFallback: true,
         base: 'https://cardmirror-licensing.jacob-w-scherrer-cloudfare.workers.dev' },
       { id: 'vercel', name: 'Vercel', type: 'worker',
         base: 'https://cardmirror-vercel-downloads.vercel.app' },
@@ -600,11 +602,13 @@
   //   preferred      id of the last provider that answered (none = new computer)
   //   failedAt       { id: time of its last connection/server failure }
   //   cooldownUntil  { id: skip until } after an Apps Script quota/rate limit
+  //   postFirst      { id: true } when GETs are filtered here but POSTs work
   function providerState() {
     var st = lsGet('providers', null);
     if (!st || typeof st !== 'object') st = {};
     if (!st.failedAt || typeof st.failedAt !== 'object') st.failedAt = {};
     if (!st.cooldownUntil || typeof st.cooldownUntil !== 'object') st.cooldownUntil = {};
+    if (!st.postFirst || typeof st.postFirst !== 'object') st.postFirst = {};
     if (st.preferred && !providerById(st.preferred)) st.preferred = null;
     return st;
   }
@@ -811,7 +815,49 @@
       saveProviderState(s);
     }
 
+    // Filters such as Securly redirect GETs from CardMirror to their sign-in
+    // page but let POSTs through. Providers with postFallback answer the same
+    // paths over POST; once that works here, POST goes first next time.
+    var isGet = !opts.method || opts.method === 'GET';
+    function postVariant() {
+      return Object.assign({}, opts, {
+        method: 'POST', body: '{}',
+        headers: Object.assign({}, opts.headers, { 'Content-Type': 'text/plain;charset=UTF-8' }), // no CORS preflight
+      });
+    }
+    function setPostFirst(p, on) {
+      var s = providerState();
+      if (!!s.postFirst[p.id] === on) return;
+      if (on) s.postFirst[p.id] = true; else delete s.postFirst[p.id];
+      saveProviderState(s);
+      log('info', 'provider.postMode', { provider: p.id, postFirst: on });
+    }
     function tryProvider(p) {
+      var canPost = isGet && !!p.postFallback;
+      var viaPost = function (note) {
+        return fetchVia(p, path, postVariant(), note).then(function (r) { setPostFirst(p, true); return r; }).then(succeeded(p));
+      };
+      if (canPost && providerState().postFirst[p.id]) {
+        return viaPost('POST first (GET is filtered on this network)').catch(function (e) {
+          lastErr = e;
+          // POST not supported (old server) or not getting through: back to GET.
+          if (!(e && (e.status === 404 || e.status === 405 || isConnErr(e)))) throw e;
+          setPostFirst(p, false);
+          return getAttempt(p);
+        });
+      }
+      var a = getAttempt(p);
+      if (canPost) {
+        a = a.catch(function (e) {
+          lastErr = e;
+          if (!e || e.code !== 'filtered') throw e;
+          log('info', 'provider.postRetry', { provider: p.id, path: path, reason: 'GET was redirected by a filter' });
+          return viaPost('retry as POST (GET was filtered)');
+        });
+      }
+      return a;
+    }
+    function getAttempt(p) {
       var attempt = fetchVia(p, path, opts).then(succeeded(p));
       attempt = attempt.catch(function (e) {
         lastErr = e;

@@ -1040,8 +1040,10 @@
     file: '<path d="M14 3H7a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V7l-4-4zM14 3v4h4"/>',
     star: '<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3z"/>',
     pin: '<path d="M12 17v5"/><path d="M9 3h6l-1 6 3 4H7l3-4-1-6z"/>',
-    checklist: '<circle cx="5" cy="6" r="2.5"/><path d="m3.9 6.1.8.8 1.5-1.6" stroke-width="1.6"/><path d="M10.5 6H20" opacity=".5"/>' +
-      '<circle cx="5" cy="12" r="2.5"/><path d="M10.5 12H20"/><circle cx="5" cy="18" r="2.5"/><path d="M10.5 18H20"/>',
+    // Three rows of a circle + a thick rounded line; the top circle is checked.
+    checklist: '<circle cx="4" cy="4.5" r="2.7" stroke-width="1.6"/><path d="m2.7 4.6.85.85 1.75-1.75" stroke-width="1.4"/>' +
+      '<circle cx="4" cy="12" r="2.7" stroke-width="1.6"/><circle cx="4" cy="19.5" r="2.7" stroke-width="1.6"/>' +
+      '<path d="M9.8 4.5h12M9.8 12h12M9.8 19.5h12" stroke-width="2"/>',
     gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
     gavel: '<path d="m14.5 12.5-8 8a2.12 2.12 0 1 1-3-3l8-8"/><path d="m16 16 6-6"/><path d="m8 8 6-6"/><path d="m9 7 8 8"/><path d="m21 11-8-8"/>',
     gauge: '<path d="M5.64 20.36A9 9 0 1 1 20.65 11.52" stroke-width="2.8"/><path d="M20.65 11.52A9 9 0 0 1 18.36 20.36" stroke-width="2.8" opacity=".35"/><path d="M12 14l6.6-1.9" stroke-width="1.8"/><circle cx="12" cy="14" r="2.1" fill="currentColor" stroke="none"/>',

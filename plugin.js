@@ -120,7 +120,7 @@
       id: 'card-search',
       name: 'Card Search',
       description: 'Search every card across your open documents and jump to the source in a click.',
-      tier: 'free',
+      tier: 'premium',
       version: '1.0.0',
       author: 'Jacob Scherrer',
       accent: ['#e4e4e7', '#d4d4d8'],
@@ -132,7 +132,7 @@
       id: 'quick-files',
       name: 'QuickFiles',
       description: 'Pin files for quick and easy access from within CardMirror.',
-      tier: 'free',
+      tier: 'premium',
       version: '1.0.0',
       author: 'Jacob Scherrer',
       accent: ['#71717a', '#3f3f46'],
@@ -144,7 +144,7 @@
       id: 'themes',
       name: 'Themes',
       description: 'Customize CardMirror’s appearance with additional themes and seasonal styles.',
-      tier: 'free',
+      tier: 'premium',
       version: '1.0.0',
       author: 'Jacob Scherrer',
       accent: ['#f97316', '#db2777'],
@@ -156,7 +156,7 @@
       id: 'round-dashboard',
       name: 'Round Dashboard',
       description: 'A dedicated dashboard for managing and viewing debate rounds.',
-      tier: 'free',
+      tier: 'premium',
       version: '1.0.0',
       author: 'Jacob Scherrer',
       accent: ['#0b1220', '#1e293b'],
@@ -168,7 +168,7 @@
       id: 'judge-dashboard',
       name: 'Judge Dashboard',
       description: 'A dedicated dashboard for judges to organize rounds, manage ballots, and access judge-specific tools.',
-      tier: 'free',
+      tier: 'premium',
       version: '1.0.0',
       author: 'Jacob Scherrer',
       accent: ['#1e3a8a', '#172554'],
@@ -180,7 +180,7 @@
       id: 'todo-list',
       name: 'TODO List',
       description: 'A task management plugin for creating, organizing, tracking, and completing tasks directly in Cardmirror.',
-      tier: 'free',
+      tier: 'premium',
       version: '1.0.0',
       author: 'Jacob Scherrer',
       accent: ['#10b981', '#047857'],
@@ -192,7 +192,7 @@
       id: 'shrink-cites',
       name: 'Shrink Cites',
       description: 'Shrink cite paragraphs to keep cards clean and readable.',
-      tier: 'free',
+      tier: 'premium',
       version: '1.0.0',
       author: 'Jacob Scherrer',
       accent: ['#f59e0b', '#b45309'],
@@ -204,7 +204,7 @@
       id: 'ribbon-manager',
       name: 'Ribbon Manager',
       description: 'Customize your CardMirror ribbon by choosing exactly which buttons appear and which stay hidden.',
-      tier: 'free',
+      tier: 'premium',
       version: '1.0.0',
       author: 'Jacob Scherrer',
       accent: ['#6366f1', '#4338ca'],
@@ -630,13 +630,14 @@
   }
 
   // The URL for a REST-style path on a provider, or null if it can't serve it.
-  // Apps Script has no path routing and only serves the catalog, free
-  // downloads and the manager's own updates.
+  // Apps Script has no path routing and only serves the catalog, plugin
+  // downloads (POST, with the code) and the manager's own updates.
   function providerUrl(p, path) {
     if (p.type !== 'apps-script') return p.base + path;
     var bare = path.split('?')[0], m;
     if (bare === '/catalog') return p.base + '?action=catalog'; // no fresh=1: protects its quota (5-min cache there)
     if ((m = bare.match(/^\/plugins\/([^/?]+)\/download$/))) return p.base + '?action=download&id=' + m[1];
+    if (bare === '/download') return p.base + '?action=download'; // POST, code checked via the licensing Worker
     if (bare === '/manager') return p.base + '?action=manager';
     return null;
   }
@@ -661,6 +662,10 @@
       e.cooldownMs = kind === 'quota' ? CONFIG.APPS_SCRIPT_QUOTA_COOLDOWN_MS : CONFIG.APPS_SCRIPT_BUSY_COOLDOWN_MS;
     } else if (kind === 'timeout') {
       e = connError('timeout', { appsScript: 'execution time exceeded' });
+    } else if (kind === 'license_invalid' || kind === 'invalid_request') {
+      e = new Error('Apps Script: ' + kind); e.code = 'invalid'; e.status = 403; // a real answer: don't hop
+    } else if (kind === 'license_check_failed') {
+      e = new Error('Apps Script: could not check the code'); e.code = 'server'; e.status = 503;
     } else if (kind === 'not_found' || kind === 'license_required') {
       e = new Error('Apps Script: ' + kind); e.code = 'invalid'; e.status = 404; // GET 404 -> next provider
     } else {
@@ -782,7 +787,7 @@
     }
     var candidates = order.filter(function (p) {
       if (!providerUrl(p, path)) return false; // e.g. Apps Script can't do licensing
-      if (p.type === 'apps-script' && opts.method && opts.method !== 'GET') return false;
+      if (p.type === 'apps-script' && opts.method && opts.method !== 'GET' && path !== '/download') return false;
       var until = st.cooldownUntil[p.id] || 0;
       if (until > now) {
         log('info', 'provider.skipped', { provider: p.id, path: path, reason: 'rate/quota limit cooldown', until: new Date(until).toISOString() });
@@ -1007,10 +1012,12 @@
         body: JSON.stringify({ license: code, device_id: deviceId }),
       });
     },
+    // Any server can answer this: Cloudflare checks the code itself, and the
+    // Vercel / Apps Script backups ask Cloudflare server-to-server, so it still
+    // works on networks that block Cloudflare. text/plain = no CORS preflight.
     installPremium: function (plugin, deviceId, licenseKey) {
       return request('/download', {
-        primaryOnly: true,
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        method: 'POST', headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
         body: backend._body(plugin, licenseKey, deviceId),
       }).then(function (r) {
         var code = r.text, version = r.res.headers.get('X-Plugin-Version') || plugin.version;
@@ -1753,6 +1760,12 @@
       var dev = deviceId();
       return backend.activate(p, key, dev).then(function () {
         log('info', 'license.activated', { id: p.id });
+      }, function (e) {
+        // Can't reach Cloudflare (e.g. blocked here). The code was linked to
+        // this computer when it was entered, so the backups can still check it.
+        if (!isConnErr(e) && !(e && e.status >= 500)) throw e;
+        log('warn', 'license.activateSkipped', { id: p.id, error: errInfo(e) });
+      }).then(function () {
         return backend.installPremium(p, dev, key);
       }).then(function (r) { return applyInstall(p, r); });
     }
@@ -1804,7 +1817,7 @@
         log('error', 'code.link.failed', errInfo(e));
         g.loading = false;
         g.error = e.code === 'wrongproduct'
-          ? 'That\u2019s a single-plugin key, not a CardMirror Plugins code.'
+          ? 'That\u2019s a single-plugin key, not an access code.'
           : errorMessage(e);
         render();
       });

@@ -226,10 +226,14 @@
 
   // Runs a downloaded bundle. Returns 'live' (registered now) or 'restart'
   // (this id already ran this session, so the new code applies next launch).
+  var runningBundleId = null; // catalog id of the bundle currently executing
+
   function runBundle(id, code) {
     if (loadedThisSession[id]) { log('info', 'bundle.run.deferred', { id: id, reason: 'already ran this session' }); return 'restart'; }
     try {
-      new Function(code + '\n//# sourceURL=cardmirror-plugin-' + id + '.js')();
+      runningBundleId = id;
+      try { new Function(code + '\n//# sourceURL=cardmirror-plugin-' + id + '.js')(); }
+      finally { runningBundleId = null; }
     } catch (e1) {
       if (e1 && /Content Security Policy|unsafe-eval|EvalError/i.test(String(e1.message || e1) + e1.name)) {
         // eval blocked: try a Blob <script> instead
@@ -238,12 +242,13 @@
         return new Promise(function (resolve, reject) {
           var el = document.createElement('script');
           el.src = url;
-          el.onload = function () { el.remove(); URL.revokeObjectURL(url); loadedThisSession[id] = true; log('info', 'bundle.run.ok', { id: id, via: 'blob-script' }); resolve('live'); };
+          el.onload = function () { runningBundleId = null; el.remove(); URL.revokeObjectURL(url); loadedThisSession[id] = true; log('info', 'bundle.run.ok', { id: id, via: 'blob-script' }); resolve('live'); };
           el.onerror = function () {
-            el.remove(); URL.revokeObjectURL(url);
+            runningBundleId = null; el.remove(); URL.revokeObjectURL(url);
             log('error', 'bundle.run.blocked', { id: id, via: 'blob-script' });
             var err = new Error('CardMirror blocked the plugin from running.'); err.code = 'blocked'; reject(err);
           };
+          runningBundleId = id;
           document.head.appendChild(el);
         });
       }
@@ -273,12 +278,78 @@
   var commandRegistry = (window.__cmPluginCommandRegistry = window.__cmPluginCommandRegistry || {});
   var pluginInfo = (window.__cmPluginInfo = window.__cmPluginInfo || {}); // pluginId -> { def, api, standIn }
 
+  // ---------------------------------------------------------------------------
+  // Saved-data protection
+  //
+  // At startup CardMirror deletes localStorage "plugin:<id>" for every plugin
+  // that isn't in ITS installed list. Plugins installed through this manager
+  // aren't in that list, so their settings (e.g. Themes colors, QuickFiles
+  // pins) were wiped on every launch. We keep a copy of each managed plugin's
+  // data under our own key and put it back before the plugin loads.
+  // ---------------------------------------------------------------------------
+  var BACKUP_PREFIX = LS + 'data:';
+
+  function managedPlugins() { return lsGet('pluginIds', {}); } // catalog id -> CardMirror plugin id
+
+  function rememberManagedPlugin(catalogId, pid) {
+    var m = managedPlugins();
+    if (m[catalogId] === pid) return;
+    m[catalogId] = pid; lsSet('pluginIds', m);
+    log('info', 'dataGuard.tracking', { id: catalogId, plugin: pid });
+  }
+
+  function backupPluginData() {
+    var m = managedPlugins();
+    Object.keys(m).forEach(function (cid) {
+      var pid = m[cid];
+      try {
+        var cur = localStorage.getItem('plugin:' + pid);
+        if (cur == null) return; // never replace a good copy with "nothing"
+        if (localStorage.getItem(BACKUP_PREFIX + pid) !== cur) localStorage.setItem(BACKUP_PREFIX + pid, cur);
+      } catch (e) {}
+    });
+  }
+
+  // Runs before any managed plugin loads.
+  function restorePluginData() {
+    var m = managedPlugins(), restored = [];
+    Object.keys(m).forEach(function (cid) {
+      var pid = m[cid];
+      try {
+        if (localStorage.getItem('plugin:' + pid) != null) return;
+        var saved = localStorage.getItem(BACKUP_PREFIX + pid);
+        if (saved == null) return;
+        localStorage.setItem('plugin:' + pid, saved);
+        restored.push(pid);
+      } catch (e) { log('warn', 'dataGuard.restoreFailed', { plugin: pid, error: errInfo(e) }); }
+    });
+    if (restored.length) log('info', 'dataGuard.restored', { plugins: restored });
+  }
+
+  // Forget a plugin's data when it's uninstalled through the manager.
+  function forgetManagedPlugin(catalogId) {
+    var m = managedPlugins(), pid = m[catalogId];
+    if (!pid) return;
+    delete m[catalogId]; lsSet('pluginIds', m);
+    try { localStorage.removeItem(BACKUP_PREFIX + pid); localStorage.removeItem('plugin:' + pid); } catch (e) {}
+  }
+
+  function startDataGuard() {
+    if (window.__cmPluginManagerDataGuard) return;
+    window.__cmPluginManagerDataGuard = true;
+    setInterval(backupPluginData, 2000);
+    window.addEventListener('pagehide', backupPluginData);
+    window.addEventListener('beforeunload', backupPluginData);
+    window.addEventListener('storage', function (e) { if (e.key && e.key.indexOf('plugin:') === 0) backupPluginData(); });
+  }
+
   function hookRegister() {
     var orig = window.__registerCardMirrorPlugin;
     if (typeof orig !== 'function' || orig.__cmManagerHook) return;
     var hooked = function (def) {
       try {
         var pid = def && String(def.id);
+        if (pid && runningBundleId) rememberManagedPlugin(runningBundleId, pid);
         if (pid) {
           var info = pluginInfo[pid] = pluginInfo[pid] || { def: def, api: null, standIn: null };
           info.def = def;
@@ -1049,6 +1120,7 @@
     if (!eapi || typeof eapi.onCloseRequest !== 'function') { log('info', 'closeHook.unavailable'); return; }
     try {
       eapi.onCloseRequest(function () {
+        backupPluginData();
         if (closeOpenManager) { log('info', 'closeHook.closedManager'); closeOpenManager(); }
       });
       window.__cmPluginManagerCloseHook = true;
@@ -1389,6 +1461,7 @@
 
     function uninstall(p) {
       state.busy[p.id] = 'removing'; render();
+      forgetManagedPlugin(p.id);
       var bundles = lsGet('bundles', {}); delete bundles[p.id]; lsSet('bundles', bundles);
       var m = installed(); delete m[p.id]; setInstalled(m);
       var ls = licenses(); delete ls[p.id]; sset('licenses', ls);
@@ -1739,9 +1812,12 @@
 
   // Re-run every plugin installed through the manager (after our own
   // registration, so the manager always loads first).
+  restorePluginData();
   hookRegister();
   hookWindowClose();
   bootInstalledBundles();
+  backupPluginData();
+  startDataGuard();
 
   // Usage ping, plugin auto-updates, manager self-update (all silent).
   runBackgroundJobs();

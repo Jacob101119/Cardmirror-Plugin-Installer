@@ -99,6 +99,9 @@
     AUTO_UPDATE_DELAY_MS: 6000,    // wait after startup before background updates
     MAX_BUNDLE_BYTES: 5 * 1024 * 1024, // same cap CardMirror's own installer uses
     TIMEOUT_MS: 20000,
+    CATALOG_TIMEOUT_MS: 8000,  // per provider, so a bad connection doesn't leave the panel hanging
+    SLOW_NOTICE_MS: 3500,      // show the "slow connection" bar after this long
+    CODE_CHECK_EVERY_MS: 10 * 60 * 1000, // how often the code is re-checked (launch / panel open)
     LOG_MAX: 300, // entries kept in the diagnostics log
   };
 
@@ -600,6 +603,7 @@
     var e = new Error(code); e.code = code; e.detail = detail; return e;
   }
   function isConnErr(e) { return !!e && (e.code === 'network' || e.code === 'timeout' || e.code === 'filtered'); }
+  function isOffline() { return navigator.onLine === false; }
 
   // ----- Download providers -----------------------------------------------
   // Cloudflare -> Vercel -> Google Apps Script by default. The last one that
@@ -703,10 +707,11 @@
   function fetchOnce(provider, path, opts, note) {
     var url = providerUrl(provider, path), method = opts.method || 'GET', t0 = Date.now(), timedOut = false;
     var ctl = new AbortController();
-    var timer = setTimeout(function () { timedOut = true; ctl.abort(); }, CONFIG.TIMEOUT_MS);
+    var timer = setTimeout(function () { timedOut = true; ctl.abort(); }, opts.timeoutMs || CONFIG.TIMEOUT_MS);
     var reqCt = opts.headers && opts.headers['Content-Type'];
     log('info', 'request.start', { provider: provider.id, method: method, url: url, contentType: reqCt, note: note });
-    return fetch(url, Object.assign({}, opts, { signal: ctl.signal, cache: 'no-store' })).then(function (res) {
+    var fetchOpts = Object.assign({}, opts, { signal: ctl.signal, cache: 'no-store' }); delete fetchOpts.timeoutMs;
+    return fetch(url, fetchOpts).then(function (res) {
       return res.text().then(function (text) {
         clearTimeout(timer);
         var ct = res.headers.get('Content-Type') || '';
@@ -793,6 +798,12 @@
     var fetchOpts = Object.assign({}, opts); delete fetchOpts.primaryOnly;
     opts = fetchOpts;
 
+    // No network at all: answer at once instead of waiting on every
+    // provider, and leave the remembered provider alone.
+    if (isOffline()) {
+      log('warn', 'request.offline', { path: path });
+      return Promise.reject(Object.assign(new Error('offline'), { code: 'offline' }));
+    }
     var st = providerState(), now = Date.now();
     var order = licensing ? [LICENSING_PROVIDER] : providerOrder();
     if (!licensing && st.preferred && order[0].id !== st.preferred) {
@@ -964,7 +975,7 @@
   var backend = {
     // -> { list, offline }
     getCatalog: function (fresh) {
-      return request(fresh ? '/catalog?fresh=1&t=' + Date.now() : '/catalog').then(function (r) {
+      return request(fresh ? '/catalog?fresh=1&t=' + Date.now() : '/catalog', { timeoutMs: CONFIG.CATALOG_TIMEOUT_MS }).then(function (r) {
         var j = null;
         try { j = JSON.parse(r.text); } catch (e) { throw Object.assign(new Error('Catalog was not valid JSON'), { code: 'server' }); }
         var list = cleanCatalog((j || {}).plugins);
@@ -1112,6 +1123,51 @@
 
   // Download newer versions of installed plugins. Each plugin already ran
   // this session, so the new code takes effect on the next launch.
+  // ---------------------------------------------------------------------------
+  // Access code check: if the code was revoked (or deleted) on the server,
+  // uninstall every plugin it unlocked. Only a definite answer from the
+  // licensing server counts; network errors, timeouts and older servers that
+  // don't send a reason never uninstall anything.
+  // ---------------------------------------------------------------------------
+  var REVOKE_REASONS = { revoked: 1, not_found: 1 };
+  var codeCheckRunning = null;
+  var onCodeRevoked = null; // set while the panel is open
+  function checkCodeStatus(force) {
+    var code = lsGet('storeKey', null);
+    if (!code) return Promise.resolve(null);
+    if (codeCheckRunning) return codeCheckRunning;
+    if (!force && Date.now() - lsGet('codeCheckedAt', 0) < CONFIG.CODE_CHECK_EVERY_MS) return Promise.resolve(null);
+    codeCheckRunning = request('/validate', {
+      primaryOnly: true, method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ license: code, product_id: CONFIG.STORE_PASS_ID, device_id: bgDeviceId() }),
+    }).then(function (r) {
+      var j = null; try { j = JSON.parse(r.text); } catch (e) {}
+      lsSet('codeCheckedAt', Date.now());
+      if (!j) return null;
+      if (j.valid) { log('info', 'code.check.ok'); return 'ok'; }
+      log('warn', 'code.check.invalid', { reason: j.reason || '(server sent no reason)' });
+      if (REVOKE_REASONS[j.reason] && lsGet('storeKey', null) === code) { uninstallForRevokedCode(j.reason); return 'revoked'; }
+      return j.reason || 'invalid';
+    }, function (e) {
+      log('info', 'code.check.skipped', { reason: 'could not reach the licensing server', error: errInfo(e) });
+      return null;
+    }).then(function (res) { codeCheckRunning = null; return res; });
+    return codeCheckRunning;
+  }
+
+  // Removes every plugin installed through the manager and the code itself.
+  // Plugin settings backups are kept, so if the code is turned back on and the
+  // plugins reinstalled, their settings come back.
+  function uninstallForRevokedCode(reason) {
+    var ids = Object.keys(lsGet('installed', {}));
+    lsSet('bundles', {}); lsSet('installed', {}); lsSet('licenses', {});
+    lsSet('storeKey', null); lsSet('codeLinkedAt', null);
+    if (lastApi) { try { ['installed', 'licenses', 'storeKey', 'codeLinkedAt'].forEach(function (k) { lastApi.storage.set(k, null); }); } catch (e) {} }
+    lsSet('revokedNotice', { at: Date.now(), reason: reason, count: ids.length });
+    log('warn', 'code.revoked', { reason: reason, uninstalled: ids });
+    if (onCodeRevoked) { try { onCodeRevoked(); } catch (e) {} }
+  }
+
   // Settings -> Auto Updates (on by default). Covers installed plugins; the
   // Plugin Manager itself always keeps itself up to date.
   function autoUpdatesOn() { return lsGet('autoUpdates', true) !== false; }
@@ -1324,7 +1380,10 @@
     setTimeout(function () {
       try {
         usagePing();
-        autoUpdatePlugins().catch(function (e) { log('warn', 'autoUpdate.crashed', errInfo(e)); });
+        checkCodeStatus(true).then(function (res) {
+          if (res === 'revoked') return; // nothing left to update
+          return autoUpdatePlugins();
+        }).catch(function (e) { log('warn', 'autoUpdate.crashed', errInfo(e)); });
       } catch (e) { log('warn', 'autoUpdate.crashed', errInfo(e)); }
     }, CONFIG.AUTO_UPDATE_DELAY_MS);
   }
@@ -1601,6 +1660,8 @@
       browserDl: null,     // { plugin, reason, error, loading } browser-download fallback
       toast: null,
       autoFailed: {},      // id -> true: Auto Updates failed once this panel session (no retry loop)
+      loading: true,       // the live catalog hasn't answered yet
+      slow: false,         // ...and it's taking a while
     };
     log('info', 'panel.open', { version: PM_VERSION });
 
@@ -1651,6 +1712,10 @@
     function close() {
       closeOpenManager = null;
       onBgUpdate = null;
+      onCodeRevoked = null;
+      window.removeEventListener('online', onNetChange);
+      window.removeEventListener('offline', onNetChange);
+      clearTimeout(slowTimer);
       document.removeEventListener('keydown', onKey, true);
       if (host) host.remove();
       host = null;
@@ -1823,7 +1888,7 @@
       g.loading = true; render();
       log('info', 'code.link.start', { chars: code.length });
       backend.linkCode(code, deviceId()).then(function () {
-        setStoreKey(code); sset('codeLinkedAt', Date.now());
+        setStoreKey(code); sset('codeLinkedAt', Date.now()); lsSet('revokedNotice', null); lsSet('codeCheckedAt', Date.now());
         log('info', 'code.linked');
         state.gate = { code: '', loading: false, error: null };
         state.view = 'browse';
@@ -1875,6 +1940,7 @@
         bound: 'This code is already linked to another computer. Unlink it there (Settings), or contact the developer.',
         network: 'Couldn\u2019t reach the plugin server. Check your connection. If it keeps happening, use Send feedback (bottom-left) with the log included.',
         timeout: 'The plugin server took too long to answer. Please try again.',
+        offline: 'You\u2019re offline. Connect to the internet and try again.',
         filtered: 'This network seems to be blocking the plugin server (a web filter answered instead).',
         server: 'The plugin server had a problem. Please try again in a moment.',
         rate: 'The plugin server is busy right now. Please wait a minute and try again.',
@@ -1938,7 +2004,7 @@
     function latestFor(p) { return state.latest[p.id] || p.version; }
     function hasUpdate(p, rec) {
       // An offline (built-in) catalog has placeholder versions: only "newer" counts.
-      return state.offline ? !!rec && cmpVer(latestFor(p), rec.version) > 0 : needsUpdate(latestFor(p), rec);
+      return state.offline || state.loading ? !!rec && cmpVer(latestFor(p), rec.version) > 0 : needsUpdate(latestFor(p), rec);
     }
 
     // Auto Updates: install whatever the panel shows as out of date, one at
@@ -1946,7 +2012,7 @@
     // panel opening before the launch check finished).
     var autoRunning = false;
     function runAutoUpdates() {
-      if (autoRunning || !autoUpdatesOn() || state.offline || !state.catalog || !host) return;
+      if (autoRunning || !autoUpdatesOn() || state.offline || state.loading || !state.catalog || !host) return;
       var m = installed();
       var due = state.catalog.filter(function (p) {
         return hasUpdate(p, m[p.id]) && !state.busy[p.id] && !bgUpdating[p.id] && !state.autoFailed[p.id];
@@ -2141,9 +2207,27 @@
     }
 
     // Shown until a code is linked: the store stays hidden behind it.
+    // Bar at the top for no internet / a slow connection (instead of a long wait).
+    function netBanner(gated) {
+      if (isOffline()) {
+        return '<div class="banner">' + icon('alert', 15) + '<span><b>No internet connection.</b> ' +
+          (gated ? 'Connect to the internet to enter your code.' : 'Showing your saved plugins. Installing and updating will work again once you\u2019re back online.') + '</span></div>';
+      }
+      if (state.loading && state.slow) {
+        return '<div class="banner">' + spinner() + '<span><b>Slow connection.</b> Still trying to reach the plugin server' +
+          (gated ? '\u2026' : '. Showing your saved plugins for now.') + '</span></div>';
+      }
+      return '';
+    }
+
     function gateView() {
       var g = state.gate, dis = g.loading ? ' disabled' : '';
-      return '<div class="gate"><div class="big">' + icon('key', 26) + '</div>' +
+      var rv = lsGet('revokedNotice', null);
+      var revokedBox = rv ? '<div class="warnbox" style="text-align:left;margin:0 0 16px">' +
+        '<b>Your access code was turned off' + (rv.count ? ', so its ' + rv.count + ' plugin' + (rv.count === 1 ? ' was' : 's were') + ' uninstalled' : '') + '.</b> ' +
+        (rv.count ? 'Restart CardMirror to finish removing ' + (rv.count === 1 ? 'it' : 'them') + '. ' : '') +
+        'If you think this is a mistake, contact the developer.</div>' : '';
+      return '<div class="gate">' + revokedBox + '<div class="big">' + icon('key', 26) + '</div>' +
         '<h2>Enter your CardMirror Plugins code</h2>' +
         '<p>One code unlocks every plugin in the store. It\u2019s saved on this computer, so you only enter it once.</p>' +
         '<input id="code" class="input" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false" value="' + esc(g.code) + '"' + dis + '>' +
@@ -2217,7 +2301,8 @@
         '<span class="grow"></span><button class="iconbtn" data-act="close" aria-label="Close">' + icon('x', 18) + '</button></header>' +
         bar +
         '<div class="body">' +
-        (state.offline && !gated && state.view !== 'settings' ? '<div class="banner">' + icon('alert', 15) + '<span>Couldn\u2019t reach the plugin server \u2014 showing the last saved catalog. Installing needs a connection. ' +
+        netBanner(gated) +
+        (state.offline && !state.loading && !isOffline() && !gated && state.view !== 'settings' ? '<div class="banner">' + icon('alert', 15) + '<span>Couldn\u2019t reach the plugin server \u2014 showing the last saved catalog. Installing needs a connection. ' +
           'If this keeps happening, <button class="linkbtn" style="color:inherit;font-size:inherit" data-act="feedback">contact the developer</button>.</span></div>' : '') +
         body + '</div>' +
         '<footer><span style="display:flex;gap:14px"><button class="linkbtn" data-act="feedback">Send feedback</button>' +
@@ -2298,8 +2383,43 @@
     render();
     // Redraw when the background job updates something; then catch anything left.
     onBgUpdate = function () { if (host) { render(); runAutoUpdates(); } };
-    backend.getCatalog().then(function (c) { state.catalog = c.list; state.offline = c.offline; render(); runAutoUpdates(); })
-      .catch(function (e) { log('error', 'catalog.crashed', errInfo(e)); state.loadError = e.message || 'Unknown error'; render(); });
+    onCodeRevoked = function () {
+      if (!host) return;
+      state.view = 'gate'; state.busy = {}; state.latest = {}; state.checked = {}; render();
+    };
+
+    // Show the saved list straight away; swap in the live catalog when it
+    // answers. A bar says so if the connection is slow or missing.
+    var slowTimer = null, loadSeq = 0;
+    function loadCatalog() {
+      var seq = ++loadSeq;
+      state.loading = true; state.slow = false;
+      if (!state.catalog) state.catalog = lsGet('catalog', null);
+      clearTimeout(slowTimer);
+      slowTimer = setTimeout(function () { if (state.loading && seq === loadSeq && host) { state.slow = true; log('warn', 'catalog.slow'); render(); } }, CONFIG.SLOW_NOTICE_MS);
+      render();
+      return backend.getCatalog().then(function (c) {
+        if (seq !== loadSeq) return;
+        clearTimeout(slowTimer);
+        state.catalog = c.list; state.offline = c.offline; state.loading = false; state.slow = false;
+        render(); runAutoUpdates();
+      }).catch(function (e) {
+        if (seq !== loadSeq) return;
+        clearTimeout(slowTimer); state.loading = false; state.slow = false;
+        log('error', 'catalog.crashed', errInfo(e)); state.loadError = e.message || 'Unknown error'; render();
+      });
+    }
+    // Back online (or just went offline): redraw, and reload when back.
+    function onNetChange() {
+      if (!host) return;
+      log('info', isOffline() ? 'net.offline' : 'net.online');
+      if (!isOffline() && (state.offline || state.loading)) { state.loadError = null; loadCatalog(); }
+      else render();
+    }
+    window.addEventListener('online', onNetChange);
+    window.addEventListener('offline', onNetChange);
+    loadCatalog();
+    checkCodeStatus(false);
   }
 
   // ---------------------------------------------------------------------------

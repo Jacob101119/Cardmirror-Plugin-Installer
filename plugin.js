@@ -337,7 +337,7 @@
       accent: ['#8b5cf6', '#6d28d9'],
       iconColor: '#ffffff',
       icon: 'sidebar',
-      // no openCommand yet (plugin is in progress)
+      openCommand: 'cardmirror-sidebar.toggle', // "Sidebar: Show / Hide"
     },
   ];
 

@@ -306,8 +306,9 @@
     },
     {
       id: 'opencaselist',
-      name: 'OpenCaseList',
-      description: 'Create and disclose rounds to the OpenCaseList wiki without leaving CardMirror.',
+      name: 'OpenCaselist',
+      description: 'Create and disclose rounds to the OpenCaselist wiki without leaving CardMirror.',
+      badge: 'BETA', // work in progress
       tier: 'premium',
       version: '1.0.0',
       author: 'Jacob Scherrer',
@@ -1053,7 +1054,7 @@
         // validated colors/icon are used, so new plugins look right with no
         // edit here. Remote image URLs are never used (not trusted/guaranteed).
         accent: local.accent || remote.accent, iconColor: local.iconColor || remote.iconColor,
-        icon: local.icon || remote.icon, image: local.image, openCommand: local.openCommand,
+        icon: local.icon || remote.icon, image: local.image, openCommand: local.openCommand, badge: local.badge,
       };
     });
   }
@@ -1578,6 +1579,7 @@
     '.tile{flex:none;width:48px;height:48px;border-radius:12px;display:grid;place-items:center;color:#fff}',
     '.name{font-weight:650;font-size:15px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}',
     '.meta{font-size:12px;color:var(--muted);margin-top:2px}',
+    '.badge{font-size:9px;font-weight:700;letter-spacing:.05em;padding:1px 6px;border-radius:5px;background:var(--warnbg);color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 35%,transparent)}',
     '.desc{font-size:13px;line-height:1.5;color:var(--muted);flex:1}',
     '.tag{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:6px}',
     '.tag.free{background:var(--okbg);color:var(--ok)}',
@@ -2230,6 +2232,7 @@
       return '<div class="tile" style="background:linear-gradient(135deg,' + esc(a[0]) + ',' + esc(a[1]) + ')' + (p.iconColor ? ';color:' + esc(p.iconColor) : '') + '">' + icon(p.icon || 'puzzle', size || 24) + '</div>';
     }
     function spinner() { return '<span class="spin" style="display:inline-flex">' + icon('refresh', 14) + '</span>'; }
+    function badgeHtml(p) { return p.badge ? ' <span class="badge">' + esc(p.badge) + '</span>' : ''; }
 
     function card(p) {
       var rec = installed()[p.id], busy = state.busy[p.id] || (bgUpdating[p.id] ? 'updating' : null), hasUpd = hasUpdate(p, rec);
@@ -2244,7 +2247,7 @@
       var openable = rec && p.openCommand && !busy;
       return '<div class="card' + (openable ? ' openable' : '') + '"' +
         (openable ? ' data-act="open-plugin" data-id="' + esc(p.id) + '" title="Open ' + esc(p.name) + '"' : '') + '><div class="row">' + tile(p) +
-        '<div><div class="name">' + esc(p.name) + '</div><div class="meta">v' + esc(p.version) + ' \u00b7 ' + esc(p.author || '') + '</div></div></div>' +
+        '<div><div class="name">' + esc(p.name) + badgeHtml(p) + '</div><div class="meta">v' + esc(p.version) + ' \u00b7 ' + esc(p.author || '') + '</div></div></div>' +
         '<div class="desc">' + esc(p.description) + '</div>' +
         '<div class="foot">' + status + '<span class="grow"></span>' + action + '</div></div>';
     }
@@ -2279,7 +2282,7 @@
         var openable = p.openCommand && !busy;
         return '<div class="item' + (openable ? ' openable' : '') + '"' +
           (openable ? ' data-act="open-plugin" data-id="' + esc(id) + '" title="Open ' + esc(p.name) + '"' : '') + '>' + tile(p, 22) +
-          '<div class="info"><div class="name">' + esc(p.name) + '</div>' +
+          '<div class="info"><div class="name">' + esc(p.name) + badgeHtml(p) + '</div>' +
           '<div class="meta">Installed v' + esc(rec.version) + (rec.needsRestart && loadedThisSession[id] ? ' \u00b7 restart CardMirror to apply' : '') + '</div>' +
           '<div style="display:flex;gap:14px;margin-top:6px;flex-wrap:wrap">' + upd + '</div></div>' +
           '<div class="acts">' + acts + '</div></div>';

@@ -325,7 +325,7 @@
       accent: ['#14b8a6', '#0d9488'],
       iconColor: '#ffffff',
       icon: 'friends',
-      // no openCommand yet (plugin is in progress)
+      openCommand: 'cardmirror-collaboration-upgrades.open-panel', // "Collaboration Upgrades: Open Panel"
     },
     {
       id: 'sidebar',

@@ -224,9 +224,9 @@
       tier: 'premium',
       version: '1.0.0',
       author: 'Jacob Scherrer',
-      accent: ['#52525b', '#27272a'], // old: ['#f97316', '#db2777']
+      accent: ['#f97316', '#db2777'],
       iconColor: '#ffffff',
-      icon: 'theme-min', // old: 'brush'
+      icon: 'brush',
       openCommand: 'cardmirror-themes.picker', // "Themes: Choose theme…"
     },
     {
@@ -236,9 +236,9 @@
       tier: 'premium',
       version: '1.0.0',
       author: 'Jacob Scherrer',
-      accent: ['#3f3f46', '#18181b'], // old: ['#0b1220', '#1e293b']
-      iconColor: '#ffffff', // old: '#22d3ee'
-      icon: 'dash-min', // old: 'gauge'
+      accent: ['#0b1220', '#1e293b'],
+      iconColor: '#22d3ee',
+      icon: 'gauge',
       openCommand: 'cardmirror-round-dashboard.open', // "Round Dashboard: Open Dashboard"
     },
     {
@@ -272,9 +272,9 @@
       tier: 'premium',
       version: '1.0.0',
       author: 'Jacob Scherrer',
-      accent: ['#71717a', '#3f3f46'], // old: ['#f59e0b', '#b45309']
+      accent: ['#f59e0b', '#b45309'],
       iconColor: '#ffffff',
-      icon: 'shrink-min', // old: 'quote'
+      icon: 'quote',
       openCommand: 'cardmirror-shrink-cites.open-panel', // "Shrink Cites: Open Panel"
     },
     {
@@ -284,9 +284,9 @@
       tier: 'premium',
       version: '1.0.0',
       author: 'Jacob Scherrer',
-      accent: ['#27272a', '#09090b'], // old: ['#6366f1', '#4338ca']
+      accent: ['#6366f1', '#4338ca'],
       iconColor: '#ffffff',
-      icon: 'ribbon-min', // old: 'sliders'
+      icon: 'sliders',
       openCommand: 'cardmirror-ribbon-manager.openPanel', // "Ribbon Manager: Open Panel"
     },
     {
@@ -1483,15 +1483,6 @@
       '<path d="M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/>',
     // Three horizontal sliders stacked, each with its knob in a different spot.
     sliders: '<path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/>',
-    // --- Simple two-tone alternates (white glyph + a lighter-gray accent) ---
-    // Themes: appearance — a circle with one half shaded (light/dark).
-    'theme-min': '<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none" opacity=".4"/>',
-    // Round Dashboard: a minimal gauge — a shaded arc with a white needle.
-    'dash-min': '<path d="M4 16a8 8 0 0 1 16 0" opacity=".4"/><path d="M12 16l5-4"/><circle cx="12" cy="16" r="1.6" fill="currentColor" stroke="none"/>',
-    // Shrink Cites: two chevrons closing toward a shaded middle line.
-    'shrink-min': '<path d="M4 12h16" opacity=".4"/><path d="M8 6l4 4 4-4"/><path d="M8 18l4-4 4 4"/>',
-    // Ribbon Manager: a toolbar with two buttons on and one off (shaded).
-    'ribbon-min': '<rect x="3" y="8" width="18" height="8" rx="2"/><circle cx="8" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" opacity=".4"/><circle cx="16" cy="12" r="1.4" fill="currentColor" stroke="none"/>',
     gavel: '<path d="m14.5 12.5-8 8a2.12 2.12 0 1 1-3-3l8-8"/><path d="m16 16 6-6"/><path d="m8 8 6-6"/><path d="m9 7 8 8"/><path d="m21 11-8-8"/>',
     gauge: '<path d="M5.64 20.36A9 9 0 1 1 20.65 11.52" stroke-width="2.8"/><path d="M20.65 11.52A9 9 0 0 1 18.36 20.36" stroke-width="2.8" opacity=".35"/><path d="M12 14l6.6-1.9" stroke-width="1.8"/><circle cx="12" cy="14" r="2.1" fill="currentColor" stroke="none"/>',
     brush: '<path d="m9.06 11.9 8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"/><path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"/>',

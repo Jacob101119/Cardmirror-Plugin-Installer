@@ -313,7 +313,19 @@
       version: '1.0.0',
       author: 'Jacob Scherrer',
       image: OCL_ICON,
-      openCommand: 'opencaselist.createRound', // "OpenCaseList: Create round"
+      openCommand: 'opencaselist.createRound', // "OpenCaselist: Create round"
+    },
+    {
+      id: 'collaboration',
+      name: 'Collaboration',
+      description: 'Collaboration tools for working on documents together in CardMirror.',
+      tier: 'premium',
+      version: '1.0.0',
+      author: 'Jacob Scherrer',
+      accent: ['#14b8a6', '#0d9488'],
+      iconColor: '#ffffff',
+      icon: 'friends',
+      // no openCommand yet (plugin is in progress)
     },
   ];
 
@@ -1490,6 +1502,8 @@
       '<circle cx="4" cy="12" r="2.7" stroke-width="1.6"/><circle cx="4" cy="19.5" r="2.7" stroke-width="1.6"/>' +
       '<path d="M9.8 4.5h12M9.8 12h12M9.8 19.5h12" stroke-width="2"/>',
     gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+    // Minimalist two people, for the collaboration plugin.
+    friends: '<circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16.5 5.3a3.2 3.2 0 0 1 0 6.1"/><path d="M18 14.4a6 6 0 0 1 3 5.6"/>',
     // CardMirror's own dropzone icon (the 'archive' storage box on the dropzone pill).
     archive: '<path d="M4 7.997a2.295 2.295 0 0 1-.39-.035A2 2 0 0 1 2.038 6.39C2 6.197 2 5.965 2 5.5s0-.697.038-.89A2 2 0 0 1 3.61 3.038C3.803 3 4.035 3 4.5 3h15c.465 0 .697 0 .89.038a2 2 0 0 1 1.572 1.572c.038.193.038.425.038.89s0 .697-.038.89a2 2 0 0 1-1.572 1.572c-.107.02-.226.03-.39.035M10 13h4M4 8h16v8.2c0 1.68 0 2.52-.327 3.162a3 3 0 0 1-1.311 1.311C17.72 21 16.88 21 15.2 21H8.8c-1.68 0-2.52 0-3.162-.327a3 3 0 0 1-1.311-1.311C4 18.72 4 17.88 4 16.2V8Z"/>',
     // Opening and closing quotation marks.

@@ -1065,8 +1065,26 @@
     return v;
   }
 
+  // Remembered tile visuals for every plugin the user has seen, so Installed
+  // shows the real icon/name right away instead of a puzzle-piece placeholder
+  // while the live catalog is still loading (or can't be reached). Keyed by id.
+  var VISUAL_KEYS = ['name', 'description', 'author', 'tier', 'icon', 'iconColor', 'accent', 'image', 'openCommand', 'badge'];
+  function cachedVisuals(id) { var v = lsGet('visuals', {}); return (v && typeof v === 'object' && v[id]) || {}; }
+  function saveVisuals(list) {
+    var arr = Array.isArray(list) ? list : [list];
+    var v = lsGet('visuals', {}); if (!v || typeof v !== 'object') v = {};
+    var changed = false;
+    arr.forEach(function (p) {
+      if (!p || !p.id) return;
+      var cur = v[p.id] || {}, next = {};
+      VISUAL_KEYS.forEach(function (k) { next[k] = (p[k] !== undefined ? p[k] : cur[k]); });
+      v[p.id] = next; changed = true;
+    });
+    if (changed) lsSet('visuals', v);
+  }
+
   function cleanCatalog(list) {
-    return (Array.isArray(list) ? list : []).filter(function (r) {
+    var out = (Array.isArray(list) ? list : []).filter(function (r) {
       return r && ID_RE.test(String(r.id)) && r.name && (r.tier === 'free' || r.tier === 'premium') && r.version;
     }).map(function (r) {
       var local = LOCAL_CATALOG.filter(function (p) { return p.id === r.id; })[0] || {};
@@ -1081,6 +1099,8 @@
         icon: local.icon || remote.icon, image: local.image, openCommand: local.openCommand, badge: local.badge,
       };
     });
+    saveVisuals(out);
+    return out;
   }
 
   var backend = {
@@ -1817,6 +1837,7 @@
         var m = installed();
         m[p.id] = Object.assign({}, m[p.id] || {}, extra || {}, { version: r.version, installedAt: Date.now(), needsRestart: mode === 'restart' });
         setInstalled(m);
+        saveVisuals(p);
         return mode;
       });
     }
@@ -2295,7 +2316,7 @@
       var m = installed(), ids = Object.keys(m);
       if (!ids.length) return '<div class="empty"><div class="big">' + icon('box', 24) + '</div><b>Nothing installed yet</b>Browse the marketplace to add your first plugin.</div>';
       return '<div class="list">' + ids.map(function (id) {
-        var p = byId(id) || { id: id, name: id, tier: 'free', version: m[id].version, description: '' };
+        var p = byId(id) || Object.assign({ id: id, name: id, tier: 'premium', description: '' }, cachedVisuals(id), { version: m[id].version });
         var rec = m[id], busy = state.busy[id] || (bgUpdating[id] ? 'updating' : null), hasUpd = hasUpdate(p, rec), checking = state.checking[id];
         var upd = checking ? '<span class="status">' + spinner() + 'Checking for updates\u2026</span>'
           : hasUpd ? '<span class="status warn">' + icon('refresh', 13) + 'Update available: v' + esc(latestFor(p)) + '</span>'

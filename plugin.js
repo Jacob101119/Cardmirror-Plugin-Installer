@@ -223,17 +223,6 @@
       accent: ['#64748b', '#334155'],
       iconColor: '#ffffff',
       icon: 'archive',
-    },
-    {
-      id: 'save-dropzone',
-      name: 'Save Dropzone',
-      description: 'Keeps your dropzone between sessions, so the shelf is right where you left it when CardMirror starts.',
-      tier: 'premium',
-      version: '1.0.0',
-      author: 'Jacob Scherrer',
-      accent: ['#14b8a6', '#0f766e'],
-      iconColor: '#ffffff',
-      icon: 'box',
       openCommand: 'cardmirror-save-dropzone.open-panel', // "Save Dropzone: Open Panel"
     },
   ];

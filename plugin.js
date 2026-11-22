@@ -517,16 +517,20 @@
   // only applies inside a document; on the home screen the tiles are not
   // clickable-to-open. Uses CardMirror's API when available, else the DOM.
   function inDocument() {
-    var a = realBaseApi() || (lastApi && typeof lastApi === 'object' ? lastApi : null);
-    try { if (a && typeof a.getView === 'function') return !!a.getView(); } catch (e) {}
-    try { if (a && typeof a.getDocIdentity === 'function') { var d = a.getDocIdentity(); return !!(d && (d.docId || d.docTitle)); } } catch (e) {}
-    try { if (a && typeof a.docInfo === 'function') return !!a.docInfo(); } catch (e) {}
+    // CardMirror shows/hides its home screen with the element's `hidden`
+    // property (home-screen root = .pmd-home-screen). That's the reliable
+    // signal: visible home => not in a document. (getView() stays truthy on
+    // the home screen, so it can't be used for this.)
     try {
       var home = document.querySelector('.pmd-home-screen');
-      if (home && home.offsetParent !== null) return false; // home screen is showing
-      if (document.querySelector('.ProseMirror')) return true; // an editor is mounted
+      if (home) return !!home.hidden; // hidden === in a document
     } catch (e) {}
-    return true; // can't tell: leave click-to-open available
+    // Fallbacks if the home element isn't found (older builds / unusual DOM).
+    var a = realBaseApi() || (lastApi && typeof lastApi === 'object' ? lastApi : null);
+    try { if (a && typeof a.getDocIdentity === 'function') { var d = a.getDocIdentity(); return !!(d && d.docId); } } catch (e) {}
+    try { if (a && typeof a.docInfo === 'function') return !!a.docInfo(); } catch (e) {}
+    try { if (document.querySelector('.ProseMirror')) return true; } catch (e) {}
+    return false; // no home element and no doc signal: treat as home (off)
   }
   function rememberRealApi(api) {
     // Only a genuine host API (has helpers a stand-in doesn't fabricate on its
@@ -1578,10 +1582,10 @@
     setTimeout(function () {
       try {
         usagePing();
-        checkCodeStatus(true).then(function (res) {
-          if (res === 'revoked') return; // nothing left to update
-          return autoUpdatePlugins();
-        }).catch(function (e) { log('warn', 'autoUpdate.crashed', errInfo(e)); });
+        // Access-code revoke check and plugin auto-update run independently:
+        // a slow/failed code check must not hold up the launch update check.
+        checkCodeStatus(true).catch(function (e) { log('warn', 'code.check.crashed', errInfo(e)); });
+        autoUpdatePlugins().catch(function (e) { log('warn', 'autoUpdate.crashed', errInfo(e)); });
       } catch (e) { log('warn', 'autoUpdate.crashed', errInfo(e)); }
     }, CONFIG.AUTO_UPDATE_DELAY_MS);
   }

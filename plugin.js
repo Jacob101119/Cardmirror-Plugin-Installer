@@ -2588,10 +2588,19 @@
       clearTimeout(slowTimer);
       slowTimer = setTimeout(function () { if (state.loading && seq === loadSeq && host) { state.slow = true; log('warn', 'catalog.slow'); render(); } }, CONFIG.SLOW_NOTICE_MS);
       render();
-      return backend.getCatalog().then(function (c) {
+      // Fetch FRESH (unique URL) so a stale CDN/proxy copy of /catalog can't
+      // leave newly added plugins missing until the user hits refresh.
+      return backend.getCatalog(true).then(function (c) {
         if (seq !== loadSeq) return;
         clearTimeout(slowTimer);
-        state.catalog = c.list; state.offline = c.offline; state.loading = false; state.slow = false;
+        // Never let a short/stale response drop plugins we already showed:
+        // union in anything from the previous list that the fetch omitted
+        // (installed plugins especially), so nothing vanishes on open.
+        var list = c.list, have = {}; list.forEach(function (p) { have[p.id] = 1; });
+        var prev = state.catalog || lsGet('catalog', null) || [];
+        var inst = installed();
+        prev.forEach(function (p) { if (p && p.id && !have[p.id] && inst[p.id]) { list = list.concat([p]); have[p.id] = 1; } });
+        state.catalog = list; state.offline = c.offline; state.loading = false; state.slow = false;
         render(); runAutoUpdates();
       }).catch(function (e) {
         if (seq !== loadSeq) return;

@@ -502,6 +502,17 @@
   // is a correct base for a stand-in when a plugin's own API hasn't been
   // captured yet. Persisted on window so it survives the manager reopening.
   function realBaseApi() { return window.__cmPluginRealApi || null; }
+  // CardMirror's app version, for the stand-in API. A real API's value wins;
+  // otherwise parse it from the user agent ("@cardmirror/desktop/<version>").
+  // Without it, plugins that gate on a minimum version (e.g. OpenCaselist's
+  // appTooOld check) treat the version as 0.0.0 and refuse to open.
+  function cmAppVersion() {
+    var ra = realBaseApi();
+    if (ra && ra.appVersion) return ra.appVersion;
+    if (lastApi && lastApi.appVersion) return lastApi.appVersion;
+    try { var m = String(navigator.userAgent || '').match(/@cardmirror\/desktop\/([0-9][0-9A-Za-z.\-]*)/i); if (m) return m[1]; } catch (e) {}
+    return undefined;
+  }
   function rememberRealApi(api) {
     // Only a genuine host API (has helpers a stand-in doesn't fabricate on its
     // own) — so a bare fallback api is never cached as the rich base.
@@ -628,7 +639,7 @@
     // manager's own fallback api exposes.
     var base = realBaseApi() || (lastApi && typeof lastApi === 'object' ? lastApi : {});
     var api = {
-      appVersion: base.appVersion,
+      appVersion: base.appVersion || cmAppVersion(),
       showToast: function (msg) {
         var s = '[' + pid + '] ' + String(msg);
         // The manager's own toast is the closest thing to CardMirror's.

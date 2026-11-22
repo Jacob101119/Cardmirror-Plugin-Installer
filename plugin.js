@@ -993,7 +993,8 @@
     }
     var candidates = order.filter(function (p) {
       if (!providerUrl(p, path)) return false; // e.g. Apps Script can't do licensing
-      if (p.type === 'apps-script' && opts.method && opts.method !== 'GET' && path !== '/download') return false;
+      if (p.type === 'apps-script' && opts.method && opts.method !== 'GET' && path !== '/download' &&
+          path.split('?')[0] !== '/catalog') return false;
       var until = st.cooldownUntil[p.id] || 0;
       if (until > now) {
         log('info', 'provider.skipped', { provider: p.id, path: path, reason: 'rate/quota limit cooldown', until: new Date(until).toISOString() });
@@ -1176,8 +1177,23 @@
 
   var backend = {
     // -> { list, offline }
+    // With a code saved, the list is asked for over POST with the code in the
+    // body (text/plain: no CORS preflight; never in the URL), so the servers
+    // can add plugins only some codes include (Marist codes). If that fails
+    // for any reason, the plain list is fetched instead.
     getCatalog: function (fresh) {
-      return request(fresh ? '/catalog?fresh=1&t=' + Date.now() : '/catalog', { timeoutMs: CONFIG.CATALOG_TIMEOUT_MS }).then(function (r) {
+      var path = fresh ? '/catalog?fresh=1&t=' + Date.now() : '/catalog';
+      var code = lsGet('storeKey', null);
+      var plain = function () { return request(path, { timeoutMs: CONFIG.CATALOG_TIMEOUT_MS }); };
+      var fetchList = !code ? plain() : request(path, {
+        timeoutMs: CONFIG.CATALOG_TIMEOUT_MS, method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+        body: JSON.stringify({ license: code, device_id: bgDeviceId() }),
+      }).catch(function (e) {
+        log('warn', 'catalog.withCode.failed', { error: errInfo(e), fallback: 'plain list' });
+        return plain();
+      });
+      return fetchList.then(function (r) {
         var j = null;
         try { j = JSON.parse(r.text); } catch (e) { throw Object.assign(new Error('Catalog was not valid JSON'), { code: 'server' }); }
         var list = cleanCatalog((j || {}).plugins);
@@ -2102,6 +2118,7 @@
         state.gate = { code: '', loading: false, error: null };
         state.view = 'browse';
         toast('Code linked to this computer'); render();
+        loadCatalog(); // some codes include extra plugins (Marist codes)
       }).catch(function (e) {
         log('error', 'code.link.failed', errInfo(e));
         g.loading = false;

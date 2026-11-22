@@ -206,7 +206,7 @@
       accent: ['#e4e4e7', '#d4d4d8'],
       iconColor: '#111111',
       icon: 'search',
-      openCommand: 'cardmirror-heading-search.open', // "Heading Search: Open (standalone window)"
+      openCommand: 'cardmirror-heading-search.open-panel', // "Heading Search: Open Panel"
     },
     {
       id: 'quick-files',

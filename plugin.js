@@ -496,6 +496,17 @@
   //    "plugin:<id>", the same place CardMirror keeps them).
   // ---------------------------------------------------------------------------
   var commandRegistry = (window.__cmPluginCommandRegistry = window.__cmPluginCommandRegistry || {});
+  // The last real per-plugin API CardMirror handed to ANY plugin. Every
+  // plugin's API shares the same host helpers (getView, readFileAtPath,
+  // spawnWindow, ...) and differs only in storage/settings/showToast, so this
+  // is a correct base for a stand-in when a plugin's own API hasn't been
+  // captured yet. Persisted on window so it survives the manager reopening.
+  function realBaseApi() { return window.__cmPluginRealApi || null; }
+  function rememberRealApi(api) {
+    // Only a genuine host API (has helpers a stand-in doesn't fabricate on its
+    // own) — so a bare fallback api is never cached as the rich base.
+    if (api && typeof api === 'object' && (typeof api.getView === 'function' || typeof api.extractSelection === 'function')) window.__cmPluginRealApi = api;
+  }
   var pluginInfo = (window.__cmPluginInfo = window.__cmPluginInfo || {}); // pluginId -> { def, api, standIn }
 
   // ---------------------------------------------------------------------------
@@ -580,6 +591,7 @@
               if (api && typeof api === 'object' && api !== info.standIn) {
                 if (!info.api) log('info', 'registry.realApi', { plugin: pid });
                 info.api = api;
+                rememberRealApi(api); // reuse as the base for other plugins' stand-ins
               }
               return run.apply(this, arguments);
             };
@@ -611,7 +623,10 @@
     var key = 'plugin:' + pid;
     var bag = function () { try { return JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (e) { return {}; } };
     var decls = function () { var d = pluginInfo[pid] && pluginInfo[pid].def; return d && Array.isArray(d.settings) ? d.settings : []; };
-    var base = lastApi && typeof lastApi === 'object' ? lastApi : {};
+    // Prefer a real host API (from any plugin, or the manager opened via its
+    // command) so the stand-in has every host helper, not just the few the
+    // manager's own fallback api exposes.
+    var base = realBaseApi() || (lastApi && typeof lastApi === 'object' ? lastApi : {});
     var api = {
       appVersion: base.appVersion,
       showToast: function (msg) {
@@ -666,8 +681,13 @@
   function apiFor(pid) {
     var info = pluginInfo[pid];
     if (!info) return null;
-    if (info.api) return info.api;
-    return info.standIn || (info.standIn = makeStandInApi(pid));
+    if (info.api) return info.api;                         // the plugin's own real API (best)
+    // Reuse a cached stand-in only if it was built from a real host API;
+    // otherwise rebuild now that one may be available.
+    if (info.standIn && info.standInRich) return info.standIn;
+    info.standIn = makeStandInApi(pid);
+    info.standInRich = !!realBaseApi();
+    return info.standIn;
   }
 
   // Runs another plugin's command. Returns false if it isn't loaded.
@@ -2594,7 +2614,7 @@
         label: 'Open Plugin Manager',
         keywords: ['plugins', 'marketplace', 'install', 'store', 'extensions'],
         defaultKey: null,
-        run: function (api) { lastApi = api; openManager(api); },
+        run: function (api) { lastApi = api; rememberRealApi(api); openManager(api); },
       },
     ],
   });

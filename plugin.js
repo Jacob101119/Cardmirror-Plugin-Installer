@@ -345,6 +345,7 @@
       id: 'tabroom',
       name: 'Tabroom',
       description: 'See your current Tabroom pairings: rooms, opponents, judges, sides, start times, and blasts, without leaving CardMirror.',
+      badge: 'BETA', // work in progress
       tier: 'premium',
       version: '1.0.0',
       author: 'Jacob Scherrer',

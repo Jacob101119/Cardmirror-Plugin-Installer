@@ -1127,6 +1127,7 @@
   // Tile visuals a plugin may supply from the Worker catalog (accent: [c1, c2],
   // iconColor, icon). Validated so a bad catalog entry can't inject markup.
   var COLOR_RE = /^#[0-9a-fA-F]{3,8}$/;
+  var OPEN_COMMAND_RE = /^[a-z0-9][a-z0-9-]*\.[A-Za-z0-9][A-Za-z0-9._-]{0,80}$/;
   function remoteVisuals(r) {
     var v = {};
     if (Array.isArray(r.accent) && r.accent.length === 2 && COLOR_RE.test(String(r.accent[0])) && COLOR_RE.test(String(r.accent[1]))) {
@@ -1134,6 +1135,9 @@
     }
     if (r.iconColor && COLOR_RE.test(String(r.iconColor))) v.iconColor = String(r.iconColor);
     if (r.icon && Object.prototype.hasOwnProperty.call(ICONS, String(r.icon))) v.icon = String(r.icon);
+    // Click-to-open command. Only ever run if an installed plugin registered
+    // a command with exactly this id (see runPluginCommand).
+    if (r.openCommand && OPEN_COMMAND_RE.test(String(r.openCommand))) v.openCommand = String(r.openCommand);
     return v;
   }
 
@@ -1168,7 +1172,7 @@
         // validated colors/icon are used, so new plugins look right with no
         // edit here. Remote image URLs are never used (not trusted/guaranteed).
         accent: local.accent || remote.accent, iconColor: local.iconColor || remote.iconColor,
-        icon: local.icon || remote.icon, image: local.image, openCommand: local.openCommand, badge: local.badge,
+        icon: local.icon || remote.icon, image: local.image, openCommand: local.openCommand || remote.openCommand, badge: local.badge,
       };
     });
     saveVisuals(out);

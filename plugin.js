@@ -1646,6 +1646,9 @@
     store: '<path d="M4 9l1.5-5h13L20 9M4 9v11h16V9M4 9c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3s3-1.3 3-3c0 1.7 1.3 3 3 3"/>',
     box: '<path d="M21 8 12 3 3 8v8l9 5 9-5V8zM3 8l9 5 9-5M12 13v8"/>',
     alert: '<path d="M12 9v4m0 4h.01M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',
+    // The letters "AI" (HTML Format's tile), filled with the tile's icon color.
+    ai: '<text x="12" y="16.6" text-anchor="middle" font-family="system-ui,-apple-system,Segoe UI,sans-serif" ' +
+      'font-size="13" font-weight="800" letter-spacing="-0.3" fill="currentColor" stroke="none">AI</text>',
   };
   function icon(name, size) {
     size = size || 16;

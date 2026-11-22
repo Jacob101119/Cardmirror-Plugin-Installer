@@ -513,6 +513,21 @@
     try { var m = String(navigator.userAgent || '').match(/@cardmirror\/desktop\/([0-9][0-9A-Za-z.\-]*)/i); if (m) return m[1]; } catch (e) {}
     return undefined;
   }
+  // Whether a document is currently open (vs the home screen). Click-to-open
+  // only applies inside a document; on the home screen the tiles are not
+  // clickable-to-open. Uses CardMirror's API when available, else the DOM.
+  function inDocument() {
+    var a = realBaseApi() || (lastApi && typeof lastApi === 'object' ? lastApi : null);
+    try { if (a && typeof a.getView === 'function') return !!a.getView(); } catch (e) {}
+    try { if (a && typeof a.getDocIdentity === 'function') { var d = a.getDocIdentity(); return !!(d && (d.docId || d.docTitle)); } } catch (e) {}
+    try { if (a && typeof a.docInfo === 'function') return !!a.docInfo(); } catch (e) {}
+    try {
+      var home = document.querySelector('.pmd-home-screen');
+      if (home && home.offsetParent !== null) return false; // home screen is showing
+      if (document.querySelector('.ProseMirror')) return true; // an editor is mounted
+    } catch (e) {}
+    return true; // can't tell: leave click-to-open available
+  }
   function rememberRealApi(api) {
     // Only a genuine host API (has helpers a stand-in doesn't fabricate on its
     // own) — so a bare fallback api is never cached as the rich base.
@@ -2008,6 +2023,7 @@
     // ---- actions ----
     function openPlugin(p) {
       if (!p || !p.openCommand) return;
+      if (!inDocument()) { toast('Open a document first to use ' + p.name); return; }
       // Close first so the plugin's own window isn't hidden behind this one.
       if (commandRegistry[p.openCommand]) {
         close();
@@ -2342,10 +2358,11 @@
       else if (rec && hasUpd) action = '<button class="btn primary" data-act="update" data-id="' + esc(p.id) + '">' + icon('refresh', 14) + 'Update</button>';
       else if (rec) action = '<button class="btn" disabled>' + icon('check', 14) + 'Installed</button>';
       else action = '<button class="btn primary" data-act="install" data-id="' + esc(p.id) + '">' + icon('download', 14) + 'Install</button>';
+      var canOpen = rec && p.openCommand && !busy && inDocument();
       var status = rec
-        ? '<span class="status ok">' + icon('check', 13) + 'Installed v' + esc(rec.version) + (p.openCommand ? ' \u00b7 click to open' : '') + '</span>'
+        ? '<span class="status ok">' + icon('check', 13) + 'Installed v' + esc(rec.version) + (canOpen ? ' \u00b7 click to open' : '') + '</span>'
         : '<span class="status">Not installed</span>';
-      var openable = rec && p.openCommand && !busy;
+      var openable = canOpen;
       return '<div class="card' + (openable ? ' openable' : '') + '"' +
         (openable ? ' data-act="open-plugin" data-id="' + esc(p.id) + '" title="Open ' + esc(p.name) + '"' : '') + '><div class="row">' + tile(p) +
         '<div><div class="name">' + esc(p.name) + badgeHtml(p) + '</div><div class="meta">v' + esc(p.version) + ' \u00b7 ' + esc(p.author || '') + '</div></div></div>' +
@@ -2380,7 +2397,7 @@
           : (hasUpd ? '<button class="btn primary" data-act="update" data-id="' + esc(id) + '">' + icon('download', 14) + 'Install update</button>'
               : '<button class="btn" data-act="check" data-id="' + esc(id) + '"' + (checking ? ' disabled' : '') + '>' + icon('refresh', 14) + 'Check for updates</button>') +
             '<button class="btn danger" data-act="uninstall" data-id="' + esc(id) + '">' + icon('trash', 14) + 'Uninstall</button>';
-        var openable = p.openCommand && !busy;
+        var openable = p.openCommand && !busy && inDocument();
         return '<div class="item' + (openable ? ' openable' : '') + '"' +
           (openable ? ' data-act="open-plugin" data-id="' + esc(id) + '" title="Open ' + esc(p.name) + '"' : '') + '>' + tile(p, 22) +
           '<div class="info"><div class="name">' + esc(p.name) + badgeHtml(p) + '</div>' +

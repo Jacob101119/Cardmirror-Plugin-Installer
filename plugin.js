@@ -635,10 +635,18 @@
         },
       },
     };
-    // Doc-related helpers aren't tied to a plugin; borrow them when available.
-    ['extractSelection', 'jumpToSource', 'flowApps', 'flowPost', 'docInfo'].forEach(function (n) {
-      if (typeof base[n] === 'function') api[n] = base[n].bind(base);
-    });
+    // Everything else CardMirror's real per-plugin API offers (doc/view helpers
+    // like extractSelection, jumpToSource, getView, getDocIdentity, ensureDocId,
+    // flowApps, ...) isn't plugin-specific, so borrow it from the manager's own
+    // real API. Without this, a panel that calls one of these threw on the FIRST
+    // click and only worked after the plugin had been run once from the command
+    // palette (which handed it the real API). storage/settings/showToast stay
+    // the plugin-scoped versions above.
+    var SKIP = { storage: 1, settings: 1, showToast: 1, appVersion: 1 };
+    for (var k in base) {
+      if (SKIP[k] || (k in api)) continue;
+      try { var val = base[k]; api[k] = typeof val === 'function' ? val.bind(base) : val; } catch (e) {}
+    }
     return api;
   }
 

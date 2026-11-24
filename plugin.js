@@ -283,6 +283,18 @@
       openCommand: 'cardmirror-shrink-cites.open-panel', // "Shrink Cites: Open Panel"
     },
     {
+      id: 'easy-reference',
+      name: 'Easy Reference',
+      description: 'Create Reference from anywhere in a card (tag, cite or body) without highlighting anything first.',
+      tier: 'premium',
+      version: '1.0.0',
+      author: 'Jacob Scherrer',
+      accent: ['#0ea5e9', '#0369a1'],
+      iconColor: '#ffffff',
+      icon: 'clipboard',
+      openCommand: 'cardmirror-easy-reference.open-panel', // "Easy Reference: Open Panel"
+    },
+    {
       id: 'ribbon-manager',
       name: 'Ribbon Manager',
       description: 'Customize your CardMirror ribbon by choosing exactly which buttons appear and which stay hidden.',
@@ -1634,6 +1646,8 @@
     // Opening and closing quotation marks.
     quote: '<path d="M16 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/>' +
       '<path d="M5 3a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2 1 1 0 0 1 1 1v1a2 2 0 0 1-2 2 1 1 0 0 0-1 1v2a1 1 0 0 0 1 1 6 6 0 0 0 6-6V5a2 2 0 0 0-2-2z"/>',
+    // A clipboard, for Easy Reference.
+    clipboard: '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 12h6M9 16h4"/>',
     // Three horizontal sliders stacked, each with its knob in a different spot.
     sliders: '<path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/>',
     gavel: '<path d="m14.5 12.5-8 8a2.12 2.12 0 1 1-3-3l8-8"/><path d="m16 16 6-6"/><path d="m8 8 6-6"/><path d="m9 7 8 8"/><path d="m21 11-8-8"/>',

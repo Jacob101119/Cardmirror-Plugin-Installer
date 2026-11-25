@@ -607,12 +607,88 @@
     try { localStorage.removeItem(BACKUP_PREFIX + pid); localStorage.removeItem('plugin:' + pid); } catch (e) {}
   }
 
+  // ---------------------------------------------------------------------------
+  // Keybind protection
+  //
+  // The same startup cleanup also deletes keybinds (pmd-settings ->
+  // ribbonKeyOverrides) for commands of plugins it doesn't know, so a key
+  // bound to e.g. "HTML Format: Paste as Card" was lost on every launch.
+  // We mirror the bindings of managed plugins' commands under our own key
+  // and add them back before any plugin loads.
+  //
+  // Only changes made in THIS window are mirrored in full (deletions too).
+  // Changes arriving from another window only add bindings: a window that
+  // is starting up runs the cleanup before we're loaded there, and that
+  // pruned copy must not erase the backup.
+  // ---------------------------------------------------------------------------
+  var APP_SETTINGS = 'pmd-settings', KEYS_KEY = 'keybinds';
+  var lastAppSettings = null;
+
+  function managedPrefixes() {
+    var m = managedPlugins(), out = {};
+    Object.keys(m).forEach(function (cid) { if (m[cid]) out[m[cid]] = true; });
+    return out;
+  }
+  function isManagedCommand(cmdId, prefixes) {
+    var dot = cmdId.indexOf('.');
+    return dot > 0 && !!prefixes[cmdId.slice(0, dot)];
+  }
+  function readAppSettings() {
+    var raw = null;
+    try { raw = localStorage.getItem(APP_SETTINGS); } catch (e) {}
+    var obj = null;
+    try { obj = raw ? JSON.parse(raw) : null; } catch (e) {}
+    return { raw: raw, obj: obj && typeof obj === 'object' ? obj : null };
+  }
+  function overridesOf(obj) {
+    var o = obj && obj.ribbonKeyOverrides;
+    return o && typeof o === 'object' && !Array.isArray(o) ? o : {};
+  }
+
+  function backupKeybinds(fromOtherWindow) {
+    var cur = readAppSettings();
+    if (!cur.obj) return;
+    if (!fromOtherWindow && cur.raw === lastAppSettings) return;
+    lastAppSettings = cur.raw;
+    var prefixes = managedPrefixes(), ov = overridesOf(cur.obj);
+    var saved = lsGet(KEYS_KEY, {}), next = {};
+    if (fromOtherWindow) Object.keys(saved).forEach(function (k) { next[k] = saved[k]; });
+    Object.keys(ov).forEach(function (k) { if (isManagedCommand(k, prefixes)) next[k] = ov[k]; });
+    if (JSON.stringify(next) !== JSON.stringify(saved)) lsSet(KEYS_KEY, next);
+  }
+
+  // Runs before any managed plugin loads.
+  function restoreKeybinds() {
+    var cur = readAppSettings(), saved = lsGet(KEYS_KEY, {});
+    if (!cur.obj) return;
+    var prefixes = managedPrefixes(), ov = overridesOf(cur.obj), restored = [];
+    Object.keys(saved).forEach(function (k) {
+      if (!isManagedCommand(k, prefixes) || Object.prototype.hasOwnProperty.call(ov, k)) return;
+      ov[k] = saved[k];
+      restored.push(k);
+    });
+    if (!restored.length) return;
+    cur.obj.ribbonKeyOverrides = ov;
+    try {
+      var raw = JSON.stringify(cur.obj);
+      localStorage.setItem(APP_SETTINGS, raw);
+      // CardMirror's settings store reloads on a storage event (normally
+      // only fired by other windows), which also rebuilds its keymaps.
+      var ev;
+      try { ev = new StorageEvent('storage', { key: APP_SETTINGS, newValue: raw, storageArea: localStorage }); }
+      catch (e) { ev = document.createEvent('StorageEvent'); ev.initStorageEvent('storage', false, false, APP_SETTINGS, null, raw, location.href, localStorage); }
+      window.dispatchEvent(ev);
+      log('info', 'keyGuard.restored', { commands: restored });
+    } catch (e) { log('warn', 'keyGuard.restoreFailed', errInfo(e)); }
+  }
+
   function startDataGuard() {
     if (window.__cmPluginManagerDataGuard) return;
     window.__cmPluginManagerDataGuard = true;
-    setInterval(backupPluginData, 2000);
-    window.addEventListener('pagehide', backupPluginData);
-    window.addEventListener('beforeunload', backupPluginData);
+    setInterval(function () { backupPluginData(); backupKeybinds(false); }, 2000);
+    window.addEventListener('storage', function (e) { if (e.key === APP_SETTINGS && e.isTrusted) backupKeybinds(true); });
+    window.addEventListener('pagehide', function () { backupPluginData(); backupKeybinds(false); });
+    window.addEventListener('beforeunload', function () { backupPluginData(); backupKeybinds(false); });
     window.addEventListener('storage', function (e) { if (e.key && e.key.indexOf('plugin:') === 0) backupPluginData(); });
   }
 
@@ -2710,10 +2786,12 @@
   // Re-run every plugin installed through the manager (after our own
   // registration, so the manager always loads first).
   restorePluginData();
+  restoreKeybinds();
   hookRegister();
   hookWindowClose();
   bootInstalledBundles();
   backupPluginData();
+  backupKeybinds(false);
   startDataGuard();
 
   // Usage ping, plugin auto-updates, manager self-update (all silent).

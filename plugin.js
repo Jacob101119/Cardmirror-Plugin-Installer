@@ -302,6 +302,7 @@
       tier: 'premium',
       version: '1.0.0',
       author: 'Jacob Scherrer',
+      audience: 'marist', // only shown to Marist codes
       accent: ['#9ca3af', '#6b7280'],
       iconColor: '#ffffff',
       icon: 'letter-c',
@@ -1271,12 +1272,19 @@
         // validated colors/icon are used, so new plugins look right with no
         // edit here. Remote image URLs are never used (not trusted/guaranteed).
         accent: local.accent || remote.accent, iconColor: local.iconColor || remote.iconColor,
-        icon: local.icon || remote.icon, image: local.image, openCommand: local.openCommand || remote.openCommand, badge: local.badge,
+        icon: local.icon || remote.icon, image: local.image, openCommand: local.openCommand || remote.openCommand, badge: local.badge, audience: local.audience,
       };
     });
     saveVisuals(out);
     return out;
   }
+
+  // Audience gating: a plugin marked `audience: 'marist'` is only shown to a
+  // device whose code is a Marist code. The Cloudflare catalog already enforces
+  // this server-side (it only lists Marist-only plugins for a Marist code), so
+  // this guards the built-in/backup/offline lists, which aren't server-gated.
+  function isMaristUser() { return lsGet('marist', false) === true; }
+  function audienceAllowed(p) { return !p || !p.audience || (p.audience === 'marist' && isMaristUser()); }
 
   var backend = {
     // -> { list, offline }
@@ -1306,15 +1314,16 @@
         if (r.provider !== LICENSING_PROVIDER.id) {
           var have = {}; list.forEach(function (p) { have[p.id] = 1; });
           (lsGet('catalog', null) || LOCAL_CATALOG).forEach(function (p) {
-            if (p && p.tier === 'premium' && !have[p.id]) list.push(p);
+            if (p && p.tier === 'premium' && !have[p.id] && audienceAllowed(p)) list.push(p);
           });
+          list = list.filter(audienceAllowed); // backups aren't trusted to gate
         }
         lsSet('catalog', list);
         return { list: list, offline: false };
       }).catch(function (err) {
         var cached = lsGet('catalog', null);
         log('warn', 'catalog.failed', { error: errInfo(err), fallback: cached ? 'saved catalog' : 'built-in list' });
-        return { list: cached || LOCAL_CATALOG, offline: true, error: err };
+        return { list: (cached || LOCAL_CATALOG).filter(audienceAllowed), offline: true, error: err };
       });
     },
 
@@ -1465,6 +1474,7 @@
       var j = null; try { j = JSON.parse(r.text); } catch (e) {}
       lsSet('codeCheckedAt', Date.now());
       if (!j) return null;
+      if (typeof j.marist === 'boolean') lsSet('marist', j.marist); // gates Marist-only plugins
       if (j.valid) { log('info', 'code.check.ok'); return 'ok'; }
       log('warn', 'code.check.invalid', { reason: j.reason || '(server sent no reason)' });
       if (REVOKE_REASONS[j.reason] && lsGet('storeKey', null) === code) { uninstallForRevokedCode(j.reason); return 'revoked'; }
@@ -2749,7 +2759,7 @@
         var list = c.list, have = {}; list.forEach(function (p) { have[p.id] = 1; });
         var prev = state.catalog || lsGet('catalog', null) || [];
         var inst = installed();
-        prev.forEach(function (p) { if (p && p.id && !have[p.id] && inst[p.id]) { list = list.concat([p]); have[p.id] = 1; } });
+        prev.forEach(function (p) { if (p && p.id && !have[p.id] && inst[p.id] && audienceAllowed(p)) { list = list.concat([p]); have[p.id] = 1; } });
         state.catalog = list; state.offline = c.offline; state.loading = false; state.slow = false;
         render(); runAutoUpdates();
       }).catch(function (e) {

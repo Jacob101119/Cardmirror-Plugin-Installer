@@ -303,9 +303,24 @@
       version: '1.0.0',
       author: 'Jacob Scherrer',
       audience: 'marist', // only shown to Marist codes
+      badge: 'MARIST',
       accent: ['#9ca3af', '#6b7280'],
       iconColor: '#ffffff',
       icon: 'letter-c',
+    },
+    {
+      id: 'html-format',
+      name: 'HTML Format',
+      description: 'Convert cards to and from the <tag>/<cite>/<card> text format, for moving cards in and out of AI tools.',
+      tier: 'premium',
+      version: '1.0.0',
+      author: 'Jacob Scherrer',
+      audience: 'marist', // only shown to Marist codes
+      badge: 'MARIST',
+      accent: ['#6b7280', '#4b5563'],
+      iconColor: '#ffffff',
+      icon: 'ai',
+      openCommand: 'cardmirror-html-format.open-panel', // "HTML Format: Open Panel"
     },
     {
       id: 'ribbon-manager',
@@ -1837,6 +1852,7 @@
     '.name{font-weight:650;font-size:15px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}',
     '.meta{font-size:12px;color:var(--muted);margin-top:2px}',
     '.badge{font-size:9px;font-weight:700;letter-spacing:.05em;padding:1px 6px;border-radius:5px;background:var(--warnbg);color:var(--warn);border:1px solid color-mix(in srgb,var(--warn) 35%,transparent)}',
+    '.badge.purple{background:color-mix(in srgb,#8b5cf6 18%,var(--bg));color:#8b5cf6;border-color:color-mix(in srgb,#8b5cf6 42%,transparent)}',
     '.desc{font-size:13px;line-height:1.5;color:var(--muted);flex:1}',
     '.tag{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:6px}',
     '.tag.free{background:var(--okbg);color:var(--ok)}',
@@ -2492,7 +2508,7 @@
       return '<div class="tile" style="background:linear-gradient(135deg,' + esc(a[0]) + ',' + esc(a[1]) + ')' + (p.iconColor ? ';color:' + esc(p.iconColor) : '') + '">' + icon(p.icon || 'puzzle', size || 24) + '</div>';
     }
     function spinner() { return '<span class="spin" style="display:inline-flex">' + icon('refresh', 14) + '</span>'; }
-    function badgeHtml(p) { return p.badge ? ' <span class="badge">' + esc(p.badge) + '</span>' : ''; }
+    function badgeHtml(p) { return p.badge ? ' <span class="badge' + (p.badge === 'MARIST' ? ' purple' : '') + '">' + esc(p.badge) + '</span>' : ''; }
 
     function card(p) {
       var rec = installed()[p.id], busy = state.busy[p.id] || (bgUpdating[p.id] ? 'updating' : null), hasUpd = hasUpdate(p, rec);

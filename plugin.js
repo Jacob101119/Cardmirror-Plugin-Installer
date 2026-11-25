@@ -193,6 +193,7 @@
       tier: 'premium',
       version: '1.0.0',
       author: 'Jacob Scherrer',
+      badge: 'BETA', // work in progress
       accent: ['#7c3aed', '#c026d3'],
       icon: 'bolt',
       image: SPEECHDROP_ICON,
@@ -322,7 +323,6 @@
       id: 'opencaselist',
       name: 'OpenCaselist',
       description: 'Create and disclose rounds to the OpenCaselist wiki without leaving CardMirror.',
-      badge: 'BETA', // work in progress
       tier: 'premium',
       version: '1.0.0',
       author: 'Jacob Scherrer',

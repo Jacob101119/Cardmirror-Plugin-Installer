@@ -296,6 +296,17 @@
       openCommand: 'cardmirror-easy-reference.open-panel', // "Easy Reference: Open Panel"
     },
     {
+      id: 'copy-headings',
+      name: 'Copy Headings',
+      description: 'Copy every pocket, hat and block in the current doc to the clipboard, with or without tags.',
+      tier: 'premium',
+      version: '1.0.0',
+      author: 'Jacob Scherrer',
+      accent: ['#9ca3af', '#6b7280'],
+      iconColor: '#ffffff',
+      icon: 'letter-c',
+    },
+    {
       id: 'ribbon-manager',
       name: 'Ribbon Manager',
       description: 'Customize your CardMirror ribbon by choosing exactly which buttons appear and which stay hidden.',
@@ -1713,6 +1724,8 @@
       '<circle cx="4" cy="12" r="2.7" stroke-width="1.6"/><circle cx="4" cy="19.5" r="2.7" stroke-width="1.6"/>' +
       '<path d="M9.8 4.5h12M9.8 12h12M9.8 19.5h12" stroke-width="2"/>',
     gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+    // A bold letter C, for Copy Headings (white glyph on its gray tile).
+    'letter-c': '<text x="12" y="13" font-size="17" font-weight="700" text-anchor="middle" dominant-baseline="central" font-family="system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif" fill="currentColor" stroke="none">C</text>',
     // A bold letter R, for Easy Reference (white glyph on its gray tile).
     'letter-r': '<text x="12" y="13" font-size="17" font-weight="700" text-anchor="middle" dominant-baseline="central" font-family="system-ui,-apple-system,\'Segoe UI\',Roboto,sans-serif" fill="currentColor" stroke="none">R</text>',
     // A side panel with a couple of controls, for the sidebar plugin.
